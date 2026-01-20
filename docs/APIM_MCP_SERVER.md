@@ -10,12 +10,12 @@ Azure API Management (APIM) natively supports **exposing REST APIs as Model Cont
 graph TB
     Client[MCP Client<br/>Semantic Kernel, GitHub Copilot]
     APIM[API Management<br/>MCP Server Host]
-    ContainerApps[Container Apps<br/>Backend REST API]
+    AppService[App Service<br/>Backend REST API]
     AIFoundry[Azure AI Foundry<br/>+ Bing Grounding]
     
     Client -->|HTTP/SSE<br/>MCP Protocol| APIM
-    APIM -->|Load Balance| ContainerApps
-    ContainerApps -->|REST API| AIFoundry
+    APIM -->|Route| AppService
+    AppService -->|REST API| AIFoundry
     
     style APIM fill:#0078d4,color:#fff
     style Client fill:#50e6ff,color:#000
@@ -23,7 +23,7 @@ graph TB
 
 ### How It Works
 
-1. **REST API Backend**: Your Container Apps expose REST API endpoints (e.g., `/bing-grounding/{agent_route}`)
+1. **REST API Backend**: Your App Service exposes REST API endpoints (e.g., `/bing-grounding/{agent_route}`)
 2. **APIM Conversion**: APIM automatically converts API operations into MCP tools
 3. **MCP Protocol**: APIM exposes an MCP server endpoint using HTTP/SSE transport
 4. **Client Connection**: MCP clients connect via `https://<apim>.azure-api.net/<api-name>-mcp/mcp`
@@ -297,7 +297,7 @@ MCP clients receive tool schemas automatically generated from API operation sche
 - Monitoring and logging via Azure Monitor
 
 ### 3. **Load Balancing**
-- APIM load balances requests across Container App instances
+- APIM routes requests to App Service backend
 - High availability built-in
 - Scale backend independently
 

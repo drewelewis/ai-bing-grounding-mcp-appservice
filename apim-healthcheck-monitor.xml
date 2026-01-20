@@ -22,11 +22,7 @@
             </set-header>
             <set-body>@{
                 var backends = new[] {
-                    new { url = "https://your-app-instance-1.azurecontainerapps.io/health", id = "0" },
-                    new { url = "https://your-app-instance-2.azurecontainerapps.io/health", id = "1" },
-                    new { url = "https://your-app-instance-3.azurecontainerapps.io/health", id = "2" },
-                    new { url = "https://your-app-instance-4.azurecontainerapps.io/health", id = "3" },
-                    new { url = "https://your-app-instance-5.azurecontainerapps.io/health", id = "4" }
+                    new { url = "https://your-app-service.azurewebsites.net/health", id = "0" }
                 };
                 
                 var results = new JArray();

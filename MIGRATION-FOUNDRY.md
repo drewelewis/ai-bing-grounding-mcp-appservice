@@ -68,7 +68,7 @@ project_client = AIProjectClient(
   - [x] Replaced AI Project with Foundry Project (child resource)
   - [x] Removed separate Azure OpenAI resource (built into Foundry)
   - [x] Updated GPT-4o deployment to use Foundry parent with GlobalStandard SKU
-  - [x] Updated Container App environment variables to use HTTPS endpoint
+  - [x] Updated App Service environment variables to use HTTPS endpoint
   - [x] Updated role assignments to reference Foundry/Project
   - [x] Updated outputs section with Foundry endpoint format
 - [x] Updated `infra/main.bicep`:
@@ -177,12 +177,12 @@ tools=[BingGroundingToolDefinition()]
 ## Role Assignments
 
 ### Old Roles (Hub-based)
-- Container Apps → AI Project: Contributor
+- App Service → AI Project: Contributor
 - AI Project → OpenAI: Azure AI Developer
 - AI Hub → OpenAI: Azure AI Developer
 
 ### New Roles (Foundry)
-- Container Apps → Foundry Project: Azure AI Developer
+- App Service → Foundry Project: Azure AI Developer
 
 Simplified! Foundry's built-in OpenAI means no cross-resource role assignments needed.
 

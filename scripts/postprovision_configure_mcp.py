@@ -211,7 +211,7 @@ def main():
                         print(f"⚠️  Health check returned status: {response.status}")
             except Exception as e:
                 print(f"⚠️  Health check failed: {e}")
-                print("   This is normal if Container Apps are still starting")
+                print("   This is normal if App Service is still starting")
     else:
         print("⚠️  Could not retrieve APIM subscription key")
         subscription_key = None

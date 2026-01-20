@@ -20,15 +20,15 @@ Azure API Management's MCP Server feature (Preview) is timing out on MCP protoco
   2. `Health Check` - GET /health
 
 ## Backend Configuration
-- **Backend URL**: `https://ca-vw5lt6yc7noze.bluewater-223e3af1.eastus.azurecontainerapps.io`
-- **Backend Type**: Azure Container App
+- **Backend URL**: `https://app-xxxxxx.azurewebsites.net`
+- **Backend Type**: Azure App Service
 - **Backend Status**: ✅ Working (verified via direct calls and through APIM REST API)
 
 ## Test Results
 
-### ✅ WORKING: Direct Container App REST API
+### ✅ WORKING: Direct App Service REST API
 ```bash
-POST https://ca-vw5lt6yc7noze.bluewater-223e3af1.eastus.azurecontainerapps.io/bing-grounding?query=test&model=gpt-4o
+POST https://app-xxxxxx.azurewebsites.net/bing-grounding?query=test&model=gpt-4o
 Status: 200 OK
 Response: {"content":"...","citations":[],...}
 ```
@@ -70,7 +70,7 @@ The MCP endpoint:
 - Accepts the TCP connection
 - Never returns a response
 - Times out after 60+ seconds
-- No requests appear in backend Container App logs (indicating APIM is not forwarding)
+- No requests appear in backend App Service logs (indicating APIM is not forwarding)
 - No errors in APIM activity logs
 
 ## Diagnostic Commands Run
@@ -79,7 +79,7 @@ The MCP endpoint:
 az apim api list --service-name apim-vw5lt6yc7noze --resource-group rg-bing-grounding-mcp-dev6
 
 # Verified backend is working  
-az containerapp logs show --name ca-vw5lt6yc7noze --resource-group rg-bing-grounding-mcp-dev6
+az webapp log tail --name app-xxxxxx --resource-group rg-bing-grounding-mcp-dev6
 
 # Tested REST API directly
 curl https://apim-vw5lt6yc7noze.azure-api.net/bing-grounding/bing-grounding?query=test&model=gpt-4o
@@ -91,7 +91,7 @@ python test_mcp_endpoint.py  # Times out
 ## Steps to Reproduce
 1. Create APIM instance in Azure
 2. Create REST API in APIM with POST operation
-3. Configure REST API backend to point to Container App
+3. Configure REST API backend to point to App Service
 4. Verify REST API works through APIM
 5. Create MCP server: "Expose an API as an MCP server"
 6. Select the REST API and all operations

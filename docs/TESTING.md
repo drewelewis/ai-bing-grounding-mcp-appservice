@@ -6,7 +6,7 @@ This guide walks through testing the Semantic Kernel agent that uses the APIM-ho
 
 1. **Deployed Azure Resources** via `azd up`:
    - Azure API Management instance
-   - Container Apps with Bing Grounding API
+   - App Service with Bing Grounding API
    - Azure AI Foundry project
    - Azure OpenAI deployment
 
@@ -376,7 +376,7 @@ After successful testing:
 
 1. **Integrate with LLM Suite**: Configure your LLM routing layer to use the APIM MCP endpoint
 2. **Monitor Usage**: Check APIM analytics for tool usage patterns
-3. **Scale Resources**: Adjust Container Apps instances based on load
+3. **Scale Resources**: Adjust App Service plan based on load
 4. **Configure Policies**: Add rate limiting, caching, or authentication policies in APIM
 5. **Deploy to Production**: Run `azd env new prod && azd up` for production environment
 

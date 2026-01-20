@@ -4,7 +4,6 @@ param appServicePlanName string
 param webAppName string
 param foundryEndpoint string
 param projectName string
-param containerRegistryName string = ''
 param pythonVersion string = '3.11'
 
 // App Service location - use East US 2 where quota exists

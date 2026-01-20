@@ -15,7 +15,7 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-previ
 
 // Grant Web App managed identity access to Foundry Project
 // Use Azure AI User role which has Microsoft.CognitiveServices/* dataActions (includes agents/read)
-// Use unique GUID including 'webapp' to avoid conflicts with Container App role assignment
+// Use unique GUID including 'webapp' to ensure unique role assignment
 resource roleAssignmentWebApp 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(projectResourceId, webAppPrincipalId, 'AzureAIUser', 'webapp')
   scope: project

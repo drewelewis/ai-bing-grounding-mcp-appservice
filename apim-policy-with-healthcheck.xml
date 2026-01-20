@@ -21,29 +21,9 @@
         <set-variable name="backends" value="@{
             return new JObject[] {
                 new JObject() { 
-                    ["url"] = "https://your-app-instance-1.azurecontainerapps.io",
-                    ["health"] = "https://your-app-instance-1.azurecontainerapps.io/health",
-                    ["id"] = "0"
-                },
-                new JObject() { 
-                    ["url"] = "https://your-app-instance-2.azurecontainerapps.io",
-                    ["health"] = "https://your-app-instance-2.azurecontainerapps.io/health",
-                    ["id"] = "1"
-                },
-                new JObject() { 
-                    ["url"] = "https://your-app-instance-3.azurecontainerapps.io",
-                    ["health"] = "https://your-app-instance-3.azurecontainerapps.io/health",
-                    ["id"] = "2"
-                },
-                new JObject() { 
-                    ["url"] = "https://your-app-instance-4.azurecontainerapps.io",
-                    ["health"] = "https://your-app-instance-4.azurecontainerapps.io/health",
-                    ["id"] = "3"
-                },
-                new JObject() { 
-                    ["url"] = "https://your-app-instance-5.azurecontainerapps.io",
-                    ["health"] = "https://your-app-instance-5.azurecontainerapps.io/health",
-                    ["id"] = "4"
+                    [&quot;url&quot;] = &quot;https://your-app-service.azurewebsites.net&quot;,
+                    [&quot;health&quot;] = &quot;https://your-app-service.azurewebsites.net/health&quot;,
+                    [&quot;id&quot;] = &quot;0&quot;
                 }
             };
         }" />
