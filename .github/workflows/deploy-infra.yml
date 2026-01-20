@@ -9,8 +9,8 @@
 #   AZURE_SUBSCRIPTION_ID - Azure subscription ID
 #
 # Required variables:
-#   AZURE_ENV_NAME        - azd environment name (e.g., "prod", "dev")
-#   AZURE_LOCATION        - Primary region (e.g., "eastus2")
+#   AZURE_ENV_NAME             - azd environment name (e.g., "prod", "dev")
+#   AZURE_LOCATION_PRIMARY     - Primary region (e.g., "eastus2")
 #
 # Optional variables:
 #   AZURE_LOCATION_SECONDARY - Secondary region (e.g., "westus2")
@@ -99,7 +99,7 @@ jobs:
           azd env select ${{ needs.validate.outputs.environment_name }}
           
           # Set location
-          azd env set AZURE_LOCATION "${{ vars.AZURE_LOCATION }}"
+          azd env set AZURE_LOCATION "${{ vars.AZURE_LOCATION_PRIMARY }}"
           
           # Set secondary location if configured
           if [ -n "${{ vars.AZURE_LOCATION_SECONDARY }}" ]; then
@@ -113,7 +113,7 @@ jobs:
           
           # Run Bicep what-if
           az deployment sub what-if \
-            --location "${{ vars.AZURE_LOCATION }}" \
+            --location "${{ vars.AZURE_LOCATION_PRIMARY }}" \
             --template-file infra/main.bicep \
             --parameters infra/main.parameters.json \
             --parameters environmentName=${{ needs.validate.outputs.environment_name }} \
@@ -158,7 +158,7 @@ jobs:
           azd env select ${{ needs.validate.outputs.environment_name }}
           
           # Set required environment variables
-          azd env set AZURE_LOCATION "${{ vars.AZURE_LOCATION }}"
+          azd env set AZURE_LOCATION "${{ vars.AZURE_LOCATION_PRIMARY }}"
           azd env set AZURE_SUBSCRIPTION_ID "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           
           # Set secondary location if configured
@@ -180,7 +180,7 @@ jobs:
           azd provision --no-prompt
         env:
           AZURE_ENV_NAME: ${{ needs.validate.outputs.environment_name }}
-          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION_PRIMARY }}
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Run post-provision hooks
@@ -201,7 +201,7 @@ jobs:
           echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Environment | ${{ needs.validate.outputs.environment_name }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Primary Region | ${{ vars.AZURE_LOCATION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Primary Region | ${{ vars.AZURE_LOCATION_PRIMARY }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Secondary Region | ${{ vars.AZURE_LOCATION_SECONDARY }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ Infrastructure provisioned successfully!" >> $GITHUB_STEP_SUMMARY
@@ -247,7 +247,7 @@ jobs:
           azd env select ${{ needs.validate.outputs.environment_name }} || \
             azd env new ${{ needs.validate.outputs.environment_name }} --no-prompt
           
-          azd env set AZURE_LOCATION "${{ vars.AZURE_LOCATION }}"
+          azd env set AZURE_LOCATION "${{ vars.AZURE_LOCATION_PRIMARY }}"
           azd env set AZURE_SUBSCRIPTION_ID "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
 
       - name: Deploy application
@@ -255,7 +255,7 @@ jobs:
           azd deploy --no-prompt
         env:
           AZURE_ENV_NAME: ${{ needs.validate.outputs.environment_name }}
-          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION_PRIMARY }}
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Run post-deploy hooks
