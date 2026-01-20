@@ -1,0 +1,229 @@
+# Deploy to Azure App Service (Multi-Region)
+#
+# This workflow deploys the Bing Grounding API to multiple App Service instances.
+# Supports blue/green deployments via agent weight management.
+#
+# Required secrets:
+#   AZURE_CLIENT_ID       - Service principal app ID (for OIDC)
+#   AZURE_TENANT_ID       - Azure AD tenant ID
+#   AZURE_SUBSCRIPTION_ID - Azure subscription ID
+#
+# Required variables:
+#   AZURE_WEBAPP_NAME_PRIMARY   - Primary region App Service name
+#   AZURE_WEBAPP_NAME_SECONDARY - Secondary region App Service name (optional)
+#
+# Or use a single secret for classic auth:
+#   AZURE_CREDENTIALS - Service principal JSON (az ad sp create-for-rbac --sdk-auth)
+
+name: Deploy to Azure App Service
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+      deploy_primary:
+        description: 'Deploy to primary region'
+        required: true
+        default: true
+        type: boolean
+      deploy_secondary:
+        description: 'Deploy to secondary region'
+        required: true
+        default: true
+        type: boolean
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Create virtual environment
+        run: python -m venv .venv
+
+      - name: Install dependencies
+        run: |
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests (if any)
+        run: |
+          source .venv/bin/activate
+          # Add test commands here if needed
+          # pytest tests/
+        continue-on-error: true
+
+      - name: Create deployment package
+        run: |
+          # Create zip excluding unnecessary files
+          zip -r deploy.zip . \
+            -x "*.git*" \
+            -x "*.venv*" \
+            -x "__pycache__/*" \
+            -x "*.pyc" \
+            -x ".env*" \
+            -x "*.md" \
+            -x "docs/*" \
+            -x "tests/*" \
+            -x ".github/*"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-package
+          path: deploy.zip
+          retention-days: 1
+
+  deploy-primary:
+    name: Deploy to Primary Region
+    needs: build
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' || 
+      github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_primary == 'true'
+    environment:
+      name: production-primary
+      url: ${{ steps.deploy.outputs.webapp-url }}
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-package
+
+      - name: Unzip artifact
+        run: unzip deploy.zip -d ./app
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Primary App Service
+        id: deploy
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}
+          package: ./app
+
+      - name: Health check
+        run: |
+          echo "Waiting for deployment to stabilize..."
+          sleep 30
+          
+          HEALTH_URL="https://${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}.azurewebsites.net/health"
+          echo "Checking health at: $HEALTH_URL"
+          
+          for i in {1..5}; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" || echo "000")
+            if [ "$response" = "200" ]; then
+              echo "✅ Health check passed!"
+              exit 0
+            fi
+            echo "Attempt $i: HTTP $response - waiting..."
+            sleep 10
+          done
+          
+          echo "⚠️ Health check did not return 200, but continuing..."
+
+  deploy-secondary:
+    name: Deploy to Secondary Region
+    needs: build
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'push' || 
+       github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_secondary == 'true') &&
+      vars.AZURE_WEBAPP_NAME_SECONDARY != ''
+    environment:
+      name: production-secondary
+      url: ${{ steps.deploy.outputs.webapp-url }}
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-package
+
+      - name: Unzip artifact
+        run: unzip deploy.zip -d ./app
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Secondary App Service
+        id: deploy
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}
+          package: ./app
+
+      - name: Health check
+        run: |
+          echo "Waiting for deployment to stabilize..."
+          sleep 30
+          
+          HEALTH_URL="https://${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}.azurewebsites.net/health"
+          echo "Checking health at: $HEALTH_URL"
+          
+          for i in {1..5}; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" || echo "000")
+            if [ "$response" = "200" ]; then
+              echo "✅ Health check passed!"
+              exit 0
+            fi
+            echo "Attempt $i: HTTP $response - waiting..."
+            sleep 10
+          done
+          
+          echo "⚠️ Health check did not return 200, but continuing..."
+
+  summary:
+    name: Deployment Summary
+    needs: [deploy-primary, deploy-secondary]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Region | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Primary | ${{ needs.deploy-primary.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Secondary | ${{ needs.deploy-secondary.result }} |" >> $GITHUB_STEP_SUMMARY

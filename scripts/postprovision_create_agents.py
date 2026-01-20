@@ -268,7 +268,13 @@ def main():
                 # Naming convention: agent_bing_{model_key}_{index}
                 # Examples: agent_bing_gpt4o_1, agent_bing_gpt4_turbo_2, agent_bing_gpt35_turbo_1
                 agent_name = f"agent_bing_{model_key.lower()}_{i}"
-                print(f"  [{agent_counter}] Creating {agent_name}...", end=" ")
+                
+                # Traffic weight for blue/green deployments
+                # Agent 1 = 100% (production), Agent 2 = 0% (standby)
+                # Use update_agent() to adjust weights for canary/cutover
+                weight = "100" if i == 1 else "0"
+                
+                print(f"  [{agent_counter}] Creating {agent_name} (weight: {weight}%)...", end=" ")
                 
                 try:
                     # Get Bing resource ID from preprovision selection
@@ -310,11 +316,12 @@ For every query, you MUST:
 
 FORBIDDEN: Answering from memory or training data. Search is required for ALL queries.""",
                         tools=[bing_tool],
-                        description="Agent with Bing grounding for real-time web search"
+                        description="Agent with Bing grounding for real-time web search",
+                        metadata={"weight": weight}
                     )
                     
-                    agent_ids.append({"id": agent.id, "name": agent_name, "model": model_name})
-                    print(f"? {agent.id}")
+                    agent_ids.append({"id": agent.id, "name": agent_name, "model": model_name, "weight": weight})
+                    print(f"✓ {agent.id}")
                     
                     # Store in environment with consistent naming
                     # AZURE_AI_AGENT_GPT4O_1, AZURE_AI_AGENT_GPT4_TURBO_2, etc.

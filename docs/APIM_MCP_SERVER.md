@@ -9,16 +9,28 @@ Azure API Management (APIM) natively supports **exposing REST APIs as Model Cont
 ```mermaid
 graph TB
     Client[MCP Client<br/>Semantic Kernel, GitHub Copilot]
-    APIM[API Management<br/>MCP Server Host]
-    AppService[App Service<br/>Backend REST API]
-    AIFoundry[Azure AI Foundry<br/>+ Bing Grounding]
+    
+    subgraph PrimaryRegion["Primary Region"]
+        APIM[API Management<br/>MCP Server Host]
+        AppService1[App Service - Primary<br/>Backend REST API]
+        AIFoundry1[Azure AI Foundry<br/>+ Bing Grounding]
+    end
+    
+    subgraph SecondaryRegion["Secondary Region"]
+        AppService2[App Service - Secondary<br/>Backend REST API]
+        AIFoundry2[Azure AI Foundry<br/>+ Bing Grounding]
+    end
     
     Client -->|HTTP/SSE<br/>MCP Protocol| APIM
-    APIM -->|Route| AppService
-    AppService -->|REST API| AIFoundry
+    APIM -->|Primary Route| AppService1
+    APIM -->|Failover Route| AppService2
+    AppService1 -->|REST API| AIFoundry1
+    AppService2 -->|REST API| AIFoundry2
     
     style APIM fill:#0078d4,color:#fff
     style Client fill:#50e6ff,color:#000
+    style AppService1 fill:#00bcf2,color:#000
+    style AppService2 fill:#00bcf2,color:#000
 ```
 
 ### How It Works

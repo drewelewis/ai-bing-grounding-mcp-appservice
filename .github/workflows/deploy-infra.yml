@@ -1,0 +1,337 @@
+# Deploy Infrastructure with Azure Developer CLI (azd)
+#
+# This workflow provisions Azure infrastructure using azd and Bicep templates.
+# Supports multi-region deployments with AI Foundry, App Service, and APIM.
+#
+# Required secrets:
+#   AZURE_CLIENT_ID       - Service principal app ID (for OIDC)
+#   AZURE_TENANT_ID       - Azure AD tenant ID
+#   AZURE_SUBSCRIPTION_ID - Azure subscription ID
+#
+# Required variables:
+#   AZURE_ENV_NAME        - azd environment name (e.g., "prod", "dev")
+#   AZURE_LOCATION        - Primary region (e.g., "eastus2")
+#
+# Optional variables:
+#   AZURE_LOCATION_SECONDARY - Secondary region (e.g., "westus2")
+
+name: Deploy Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - provision      # Provision infrastructure only
+          - deploy         # Deploy app only (after provision)
+          - up             # Full provision + deploy
+          - down           # Tear down infrastructure
+          - what-if        # Preview changes without applying
+      
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        default: 'prod'
+        options:
+          - prod
+          - staging
+          - dev
+      
+      skip_hooks:
+        description: 'Skip pre/post provision hooks'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PYTHON_VERSION: '3.11'
+  AZD_VERSION: 'latest'
+
+jobs:
+  validate:
+    name: Validate Inputs
+    runs-on: ubuntu-latest
+    outputs:
+      environment_name: ${{ steps.set-env.outputs.environment_name }}
+    
+    steps:
+      - name: Set environment name
+        id: set-env
+        run: |
+          # Use input environment or fall back to variable
+          ENV_NAME="${{ github.event.inputs.environment }}"
+          if [ -z "$ENV_NAME" ]; then
+            ENV_NAME="${{ vars.AZURE_ENV_NAME }}"
+          fi
+          echo "environment_name=$ENV_NAME" >> $GITHUB_OUTPUT
+          echo "📍 Environment: $ENV_NAME"
+
+  what-if:
+    name: Preview Changes (What-If)
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.event.inputs.action == 'what-if'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install azd
+        uses: Azure/setup-azd@v1
+        with:
+          version: ${{ env.AZD_VERSION }}
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Configure azd environment
+        run: |
+          azd config set auth.useAzCliAuth true
+          azd env new ${{ needs.validate.outputs.environment_name }} --no-prompt || true
+          azd env select ${{ needs.validate.outputs.environment_name }}
+          
+          # Set location
+          azd env set AZURE_LOCATION "${{ vars.AZURE_LOCATION }}"
+          
+          # Set secondary location if configured
+          if [ -n "${{ vars.AZURE_LOCATION_SECONDARY }}" ]; then
+            azd env set AZURE_LOCATION_SECONDARY "${{ vars.AZURE_LOCATION_SECONDARY }}"
+          fi
+
+      - name: Preview infrastructure changes
+        run: |
+          echo "## Infrastructure Preview (What-If)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Run Bicep what-if
+          az deployment sub what-if \
+            --location "${{ vars.AZURE_LOCATION }}" \
+            --template-file infra/main.bicep \
+            --parameters infra/main.parameters.json \
+            --parameters environmentName=${{ needs.validate.outputs.environment_name }} \
+            >> $GITHUB_STEP_SUMMARY 2>&1 || true
+
+  provision:
+    name: Provision Infrastructure
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.event.inputs.action == 'provision' || github.event.inputs.action == 'up'
+    environment:
+      name: ${{ needs.validate.outputs.environment_name }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install azd
+        uses: Azure/setup-azd@v1
+        with:
+          version: ${{ env.AZD_VERSION }}
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Configure azd environment
+        run: |
+          azd config set auth.useAzCliAuth true
+          azd env new ${{ needs.validate.outputs.environment_name }} --no-prompt || true
+          azd env select ${{ needs.validate.outputs.environment_name }}
+          
+          # Set required environment variables
+          azd env set AZURE_LOCATION "${{ vars.AZURE_LOCATION }}"
+          azd env set AZURE_SUBSCRIPTION_ID "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          
+          # Set secondary location if configured
+          if [ -n "${{ vars.AZURE_LOCATION_SECONDARY }}" ]; then
+            azd env set AZURE_LOCATION_SECONDARY "${{ vars.AZURE_LOCATION_SECONDARY }}"
+          fi
+
+      - name: Run pre-provision hooks
+        if: github.event.inputs.skip_hooks != 'true'
+        run: |
+          echo "Running pre-provision scripts..."
+          python scripts/preprovision_read_model_config.py || true
+          python scripts/preprovision_register_providers.py || true
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Provision infrastructure
+        run: |
+          azd provision --no-prompt
+        env:
+          AZURE_ENV_NAME: ${{ needs.validate.outputs.environment_name }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run post-provision hooks
+        if: github.event.inputs.skip_hooks != 'true'
+        run: |
+          echo "Running post-provision scripts..."
+          python scripts/postprovision_deploy_models.py || true
+          python scripts/postprovision_deploy_bing_connection.py || true
+          python scripts/postprovision_create_agents.py || true
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_ENV_NAME: ${{ needs.validate.outputs.environment_name }}
+
+      - name: Output summary
+        run: |
+          echo "## Provision Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ needs.validate.outputs.environment_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Primary Region | ${{ vars.AZURE_LOCATION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Secondary Region | ${{ vars.AZURE_LOCATION_SECONDARY }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Infrastructure provisioned successfully!" >> $GITHUB_STEP_SUMMARY
+
+  deploy:
+    name: Deploy Application
+    needs: [validate, provision]
+    runs-on: ubuntu-latest
+    if: |
+      always() && 
+      (github.event.inputs.action == 'deploy' || github.event.inputs.action == 'up') &&
+      (needs.provision.result == 'success' || needs.provision.result == 'skipped')
+    environment:
+      name: ${{ needs.validate.outputs.environment_name }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install azd
+        uses: Azure/setup-azd@v1
+        with:
+          version: ${{ env.AZD_VERSION }}
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Configure azd environment
+        run: |
+          azd config set auth.useAzCliAuth true
+          azd env select ${{ needs.validate.outputs.environment_name }} || \
+            azd env new ${{ needs.validate.outputs.environment_name }} --no-prompt
+          
+          azd env set AZURE_LOCATION "${{ vars.AZURE_LOCATION }}"
+          azd env set AZURE_SUBSCRIPTION_ID "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+
+      - name: Deploy application
+        run: |
+          azd deploy --no-prompt
+        env:
+          AZURE_ENV_NAME: ${{ needs.validate.outputs.environment_name }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run post-deploy hooks
+        if: github.event.inputs.skip_hooks != 'true'
+        run: |
+          echo "Running post-deploy scripts..."
+          python scripts/postdeploy_configure_appservice.py || true
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_ENV_NAME: ${{ needs.validate.outputs.environment_name }}
+
+  teardown:
+    name: Tear Down Infrastructure
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.event.inputs.action == 'down'
+    environment:
+      name: ${{ needs.validate.outputs.environment_name }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install azd
+        uses: Azure/setup-azd@v1
+        with:
+          version: ${{ env.AZD_VERSION }}
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Configure azd environment
+        run: |
+          azd config set auth.useAzCliAuth true
+          azd env select ${{ needs.validate.outputs.environment_name }}
+
+      - name: Confirm teardown
+        run: |
+          echo "⚠️ WARNING: This will delete all resources in environment: ${{ needs.validate.outputs.environment_name }}"
+          echo ""
+          echo "Resources to be deleted:"
+          azd env get-values | grep -E "^AZURE_" || true
+
+      - name: Tear down infrastructure
+        run: |
+          azd down --force --purge --no-prompt
+        env:
+          AZURE_ENV_NAME: ${{ needs.validate.outputs.environment_name }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Summary
+        run: |
+          echo "## Teardown Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Environment **${{ needs.validate.outputs.environment_name }}** has been deleted." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ Note: Some resources may be soft-deleted. Use Azure Portal to purge if needed." >> $GITHUB_STEP_SUMMARY
+
+  summary:
+    name: Workflow Summary
+    needs: [validate, provision, deploy, teardown, what-if]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Infrastructure Workflow Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| What-If | ${{ needs.what-if.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Provision | ${{ needs.provision.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deploy | ${{ needs.deploy.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Teardown | ${{ needs.teardown.result }} |" >> $GITHUB_STEP_SUMMARY

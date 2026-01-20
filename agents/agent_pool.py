@@ -55,6 +55,9 @@ def discover_agents_from_project(endpoint: str = None) -> Dict[str, List[dict]]:
                     print(f"⚠️  Skipping agent {agent.name}: no model specified")
                     continue
                 
+                # Get weight from metadata (defaults to 100 if not set)
+                weight = int(agent.metadata.get("weight", "100")) if agent.metadata else 100
+                
                 if model not in agents:
                     agents[model] = []
                 
@@ -62,10 +65,11 @@ def discover_agents_from_project(endpoint: str = None) -> Dict[str, List[dict]]:
                     "id": agent.id,
                     "index": index,
                     "name": agent.name,
-                    "model": model
+                    "model": model,
+                    "weight": weight
                 })
                 
-                print(f"✅ Discovered: {agent.name} -> {agent.id} ({model})")
+                print(f"✅ Discovered: {agent.name} -> {agent.id} ({model}, weight: {weight}%)")
         
         # Sort by index within each model
         for model in agents:
@@ -107,7 +111,8 @@ def get_all_agent_ids() -> List[Dict[str, str]]:
                 "model": model,
                 "index": agent_info["index"],
                 "route": route,
-                "name": agent_info.get("name", "")
+                "name": agent_info.get("name", ""),
+                "weight": agent_info.get("weight", 100)
             })
     
     return all_agents

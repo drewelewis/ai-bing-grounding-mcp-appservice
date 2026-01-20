@@ -65,56 +65,116 @@ Your API will be available at the endpoint shown in the output.
 
 ## Architecture
 
-### Current Architecture: App Service with Agent Pool
+### Multi-Region Architecture: 2 Regions with Centralized APIM
 
 ```mermaid
 graph TB
     subgraph External["External Clients"]
-        Client[LLM Suite / MCP Client]
+        Client[LLM Suite / MCP Client<br/>Selects model via API]
     end
     
-    subgraph APIM["Azure API Management"]
-        Gateway[API Gateway<br/>• Circuit Breaker<br/>• Rate Limiting<br/>• Session Affinity]
-    end
-    
-    subgraph AppService["Azure App Service"]
-        WebApp[App Service<br/>12 Agent Endpoints]
-    end
-    
-    subgraph Foundry["Azure AI Foundry (Single Project)"]
-        Project[AI Project]
-        GPT4O[GPT-4o Deployment<br/>10K TPM Capacity]
-        subgraph Agents["Agent Pool (12 Agents)"]
-            Agent1[Agent 1]
-            Agent2[Agent 2]
-            Agent12[Agent 12]
+    subgraph PrimaryRegion["Primary Region (East US 2)"]
+        subgraph APIM["Azure API Management"]
+            Gateway[API Gateway<br/>• Circuit Breaker<br/>• Health Checks<br/>• Load Balancing<br/>• Session Affinity]
         end
-        Bing[Bing Grounding<br/>Connection]
+        
+        subgraph AppService1["Azure App Service - Primary"]
+            WebApp1[App Service<br/>4 Agent Endpoints]
+        end
+        
+        subgraph Foundry1["Azure AI Foundry - Primary"]
+            subgraph Project1["AI Project"]
+                subgraph Models1["Model Deployments"]
+                    GPT4O1[GPT-4o<br/>10K TPM]
+                    GPT41Mini1[GPT-4.1-mini<br/>10K TPM]
+                end
+                subgraph Agents1["Agents"]
+                    Agent1A[bing-gpt4o-1]
+                    Agent1B[bing-gpt4o-2]
+                    Agent1C[bing-gpt41mini-1]
+                    Agent1D[bing-gpt41mini-2]
+                end
+                Bing1[Bing Grounding<br/>Connection]
+            end
+        end
     end
     
-    Client -->|HTTPS Requests| Gateway
-    Gateway -->|Route| WebApp
+    subgraph SecondaryRegion["Secondary Region (West US 2)"]
+        subgraph AppService2["Azure App Service - Secondary"]
+            WebApp2[App Service<br/>4 Agent Endpoints]
+        end
+        
+        subgraph Foundry2["Azure AI Foundry - Secondary"]
+            subgraph Project2["AI Project"]
+                subgraph Models2["Model Deployments"]
+                    GPT4O2[GPT-4o<br/>10K TPM]
+                    GPT41Mini2[GPT-4.1-mini<br/>10K TPM]
+                end
+                subgraph Agents2["Agents"]
+                    Agent2A[bing-gpt4o-1]
+                    Agent2B[bing-gpt4o-2]
+                    Agent2C[bing-gpt41mini-1]
+                    Agent2D[bing-gpt41mini-2]
+                end
+                Bing2[Bing Grounding<br/>Connection]
+            end
+        end
+    end
     
-    WebApp -->|Managed Identity| Project
-    Project --> Agents
-    Agent1 & Agent2 & Agent12 -->|Use| GPT4O
-    Agent1 & Agent2 & Agent12 -->|Search| Bing
+    Client -->|HTTPS| Gateway
+    Gateway -->|Primary Route| WebApp1
+    Gateway -->|Failover Route| WebApp2
+    
+    WebApp1 -->|Managed Identity| Project1
+    Agent1A & Agent1B --> GPT4O1
+    Agent1C & Agent1D --> GPT41Mini1
+    Agents1 --> Bing1
+    
+    WebApp2 -->|Managed Identity| Project2
+    Agent2A & Agent2B --> GPT4O2
+    Agent2C & Agent2D --> GPT41Mini2
+    Agents2 --> Bing2
     
     style Gateway fill:#0078d4,color:#fff
-    style WebApp fill:#00bcf2,color:#000
-    style Project fill:#50e6ff,color:#000
-    style GPT4O fill:#ff6b6b,color:#fff
-    style Bing fill:#00b294,color:#fff
+    style WebApp1 fill:#00bcf2,color:#000
+    style WebApp2 fill:#00bcf2,color:#000
+    style Project1 fill:#50e6ff,color:#000
+    style Project2 fill:#50e6ff,color:#000
+    style GPT4O1 fill:#ff6b6b,color:#fff
+    style GPT4O2 fill:#ff6b6b,color:#fff
+    style GPT41Mini1 fill:#ff6b6b,color:#fff
+    style GPT41Mini2 fill:#ff6b6b,color:#fff
+    style Bing1 fill:#00b294,color:#fff
+    style Bing2 fill:#00b294,color:#fff
+    style Agent1A fill:#9b59b6,color:#fff
+    style Agent1B fill:#9b59b6,color:#fff
+    style Agent1C fill:#9b59b6,color:#fff
+    style Agent1D fill:#9b59b6,color:#fff
+    style Agent2A fill:#9b59b6,color:#fff
+    style Agent2B fill:#9b59b6,color:#fff
+    style Agent2C fill:#9b59b6,color:#fff
+    style Agent2D fill:#9b59b6,color:#fff
 ```
 
-**Characteristics:**
-- ✅ **TPM Capacity:** 10K TPM (shared across all agents)
-- ✅ **Agent Pool:** 12 agents for load distribution
-- ✅ **Always On:** App Service keeps agents warm
-- ✅ **Managed Identity:** Secure authentication to AI Foundry
-- ⚠️ **Single TPM Quota:** All agents share same GPT-4o deployment
+**Bing Grounding Supported Models (Current):**
+| Model | Agents per Region | Description |
+|-------|-------------------|-------------|
+| **GPT-4o** | 2 | Latest GPT-4 multimodal model |
+| **GPT-4.1-mini** | 2 | Cost-effective smaller model |
 
-**Use Case:** Development, pilot projects, moderate production workloads (up to ~300K queries/month)
+> **Note:** Legacy models (GPT-4, GPT-4-turbo, GPT-3.5-turbo) also support Bing grounding but are deprecated and not deployed by default.
+
+**Characteristics:**
+- ✅ **Multi-Region:** 2 App Service instances for high availability
+- ✅ **Model Selection:** API caller chooses which model to use
+- ✅ **TPM Capacity:** 40K TPM total (20K per region: 10K GPT-4o + 10K GPT-4.1-mini)
+- ✅ **Agent Pool:** 8 agents total (4 per region: 2 per model)
+- ✅ **Centralized APIM:** Single API Management in primary region
+- ✅ **Health-Based Routing:** APIM routes to healthy backends
+- ✅ **Automatic Failover:** Traffic shifts to secondary on primary failure
+- ✅ **Managed Identity:** Secure authentication per region
+
+**Use Case:** Production workloads requiring high availability, model choice, and regional redundancy
 
 **Monthly Cost:** ~$2,000 (See [Cost Analysis](#cost-analysis) below)
 

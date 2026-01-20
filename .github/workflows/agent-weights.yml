@@ -1,0 +1,277 @@
+# Manage Agent Weights for Blue/Green Deployments
+#
+# This workflow manages agent weights for traffic shifting between agents.
+# Use this for blue/green deployments, canary releases, and rollbacks.
+#
+# Prerequisites:
+#   - Admin endpoints must be deployed (/admin/agents/{route}/weight)
+#   - App Service must have ADMIN_API_KEY configured (or authentication disabled for admin)
+#
+# Required secrets:
+#   ADMIN_API_KEY - API key for admin endpoints (if enabled)
+#
+# Required variables:
+#   AZURE_WEBAPP_NAME_PRIMARY   - Primary region App Service name
+#   AZURE_WEBAPP_NAME_SECONDARY - Secondary region App Service name (optional)
+
+name: Manage Agent Weights
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: 'Deployment scenario'
+        required: true
+        type: choice
+        options:
+          - custom           # Set specific weights
+          - blue-100         # All traffic to blue (agent 1)
+          - green-100        # All traffic to green (agent 2)
+          - canary-10        # 90% blue, 10% green
+          - canary-25        # 75% blue, 25% green
+          - canary-50        # 50% blue, 50% green
+          - rollback         # Restore blue to 100%
+      
+      model:
+        description: 'Model to update (or "all" for both)'
+        required: true
+        type: choice
+        options:
+          - all
+          - gpt-4o
+          - gpt-4.1-mini
+      
+      region:
+        description: 'Region to update'
+        required: true
+        type: choice
+        options:
+          - all
+          - primary
+          - secondary
+      
+      blue_weight:
+        description: 'Blue agent weight (0-100, only for custom scenario)'
+        required: false
+        default: '100'
+      
+      green_weight:
+        description: 'Green agent weight (0-100, only for custom scenario)'
+        required: false
+        default: '0'
+
+jobs:
+  calculate-weights:
+    name: Calculate Weights
+    runs-on: ubuntu-latest
+    outputs:
+      blue_weight: ${{ steps.calc.outputs.blue_weight }}
+      green_weight: ${{ steps.calc.outputs.green_weight }}
+    
+    steps:
+      - name: Calculate weights based on scenario
+        id: calc
+        run: |
+          case "${{ github.event.inputs.scenario }}" in
+            "blue-100"|"rollback")
+              echo "blue_weight=100" >> $GITHUB_OUTPUT
+              echo "green_weight=0" >> $GITHUB_OUTPUT
+              ;;
+            "green-100")
+              echo "blue_weight=0" >> $GITHUB_OUTPUT
+              echo "green_weight=100" >> $GITHUB_OUTPUT
+              ;;
+            "canary-10")
+              echo "blue_weight=90" >> $GITHUB_OUTPUT
+              echo "green_weight=10" >> $GITHUB_OUTPUT
+              ;;
+            "canary-25")
+              echo "blue_weight=75" >> $GITHUB_OUTPUT
+              echo "green_weight=25" >> $GITHUB_OUTPUT
+              ;;
+            "canary-50")
+              echo "blue_weight=50" >> $GITHUB_OUTPUT
+              echo "green_weight=50" >> $GITHUB_OUTPUT
+              ;;
+            "custom")
+              echo "blue_weight=${{ github.event.inputs.blue_weight }}" >> $GITHUB_OUTPUT
+              echo "green_weight=${{ github.event.inputs.green_weight }}" >> $GITHUB_OUTPUT
+              ;;
+          esac
+          
+          echo "📊 Scenario: ${{ github.event.inputs.scenario }}"
+
+  update-primary:
+    name: Update Primary Region
+    needs: calculate-weights
+    runs-on: ubuntu-latest
+    if: github.event.inputs.region == 'all' || github.event.inputs.region == 'primary'
+    
+    steps:
+      - name: Update agent weights - Primary
+        run: |
+          BASE_URL="https://${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}.azurewebsites.net"
+          
+          # Determine which models to update
+          if [ "${{ github.event.inputs.model }}" = "all" ]; then
+            MODELS=("gpt-4o" "gpt-4.1-mini")
+          else
+            MODELS=("${{ github.event.inputs.model }}")
+          fi
+          
+          BLUE_WEIGHT=${{ needs.calculate-weights.outputs.blue_weight }}
+          GREEN_WEIGHT=${{ needs.calculate-weights.outputs.green_weight }}
+          
+          echo "🎯 Primary Region: ${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}"
+          echo "📊 Blue Weight: $BLUE_WEIGHT, Green Weight: $GREEN_WEIGHT"
+          echo ""
+          
+          for model in "${MODELS[@]}"; do
+            echo "Updating $model agents..."
+            
+            # Update blue agent (agent 1)
+            BLUE_ROUTE="${model}-bing-grounding-1"
+            echo "  → Setting $BLUE_ROUTE to weight $BLUE_WEIGHT"
+            
+            response=$(curl -s -w "\n%{http_code}" -X PUT \
+              "$BASE_URL/admin/agents/$BLUE_ROUTE/weight" \
+              -H "Content-Type: application/json" \
+              -H "X-Admin-Key: ${{ secrets.ADMIN_API_KEY }}" \
+              -d "{\"weight\": $BLUE_WEIGHT}")
+            
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+            
+            if [ "$http_code" = "200" ]; then
+              echo "    ✅ Success"
+            else
+              echo "    ❌ Failed (HTTP $http_code): $body"
+            fi
+            
+            # Update green agent (agent 2)
+            GREEN_ROUTE="${model}-bing-grounding-2"
+            echo "  → Setting $GREEN_ROUTE to weight $GREEN_WEIGHT"
+            
+            response=$(curl -s -w "\n%{http_code}" -X PUT \
+              "$BASE_URL/admin/agents/$GREEN_ROUTE/weight" \
+              -H "Content-Type: application/json" \
+              -H "X-Admin-Key: ${{ secrets.ADMIN_API_KEY }}" \
+              -d "{\"weight\": $GREEN_WEIGHT}")
+            
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+            
+            if [ "$http_code" = "200" ]; then
+              echo "    ✅ Success"
+            else
+              echo "    ❌ Failed (HTTP $http_code): $body"
+            fi
+            
+            echo ""
+          done
+          
+          # Trigger cache refresh
+          echo "🔄 Triggering cache refresh..."
+          curl -s -X POST "$BASE_URL/admin/refresh" \
+            -H "X-Admin-Key: ${{ secrets.ADMIN_API_KEY }}" || true
+
+  update-secondary:
+    name: Update Secondary Region
+    needs: calculate-weights
+    runs-on: ubuntu-latest
+    if: |
+      (github.event.inputs.region == 'all' || github.event.inputs.region == 'secondary') &&
+      vars.AZURE_WEBAPP_NAME_SECONDARY != ''
+    
+    steps:
+      - name: Update agent weights - Secondary
+        run: |
+          BASE_URL="https://${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}.azurewebsites.net"
+          
+          # Determine which models to update
+          if [ "${{ github.event.inputs.model }}" = "all" ]; then
+            MODELS=("gpt-4o" "gpt-4.1-mini")
+          else
+            MODELS=("${{ github.event.inputs.model }}")
+          fi
+          
+          BLUE_WEIGHT=${{ needs.calculate-weights.outputs.blue_weight }}
+          GREEN_WEIGHT=${{ needs.calculate-weights.outputs.green_weight }}
+          
+          echo "🎯 Secondary Region: ${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}"
+          echo "📊 Blue Weight: $BLUE_WEIGHT, Green Weight: $GREEN_WEIGHT"
+          echo ""
+          
+          for model in "${MODELS[@]}"; do
+            echo "Updating $model agents..."
+            
+            # Update blue agent (agent 1)
+            BLUE_ROUTE="${model}-bing-grounding-1"
+            echo "  → Setting $BLUE_ROUTE to weight $BLUE_WEIGHT"
+            
+            response=$(curl -s -w "\n%{http_code}" -X PUT \
+              "$BASE_URL/admin/agents/$BLUE_ROUTE/weight" \
+              -H "Content-Type: application/json" \
+              -H "X-Admin-Key: ${{ secrets.ADMIN_API_KEY }}" \
+              -d "{\"weight\": $BLUE_WEIGHT}")
+            
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+            
+            if [ "$http_code" = "200" ]; then
+              echo "    ✅ Success"
+            else
+              echo "    ❌ Failed (HTTP $http_code): $body"
+            fi
+            
+            # Update green agent (agent 2)
+            GREEN_ROUTE="${model}-bing-grounding-2"
+            echo "  → Setting $GREEN_ROUTE to weight $GREEN_WEIGHT"
+            
+            response=$(curl -s -w "\n%{http_code}" -X PUT \
+              "$BASE_URL/admin/agents/$GREEN_ROUTE/weight" \
+              -H "Content-Type: application/json" \
+              -H "X-Admin-Key: ${{ secrets.ADMIN_API_KEY }}" \
+              -d "{\"weight\": $GREEN_WEIGHT}")
+            
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+            
+            if [ "$http_code" = "200" ]; then
+              echo "    ✅ Success"
+            else
+              echo "    ❌ Failed (HTTP $http_code): $body"
+            fi
+            
+            echo ""
+          done
+          
+          # Trigger cache refresh
+          echo "🔄 Triggering cache refresh..."
+          curl -s -X POST "$BASE_URL/admin/refresh" \
+            -H "X-Admin-Key: ${{ secrets.ADMIN_API_KEY }}" || true
+
+  summary:
+    name: Weight Update Summary
+    needs: [calculate-weights, update-primary, update-secondary]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Agent Weight Update Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Scenario | ${{ github.event.inputs.scenario }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Model | ${{ github.event.inputs.model }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Region | ${{ github.event.inputs.region }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Blue Weight | ${{ needs.calculate-weights.outputs.blue_weight }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Green Weight | ${{ needs.calculate-weights.outputs.green_weight }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Region | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Primary | ${{ needs.update-primary.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Secondary | ${{ needs.update-secondary.result }} |" >> $GITHUB_STEP_SUMMARY
