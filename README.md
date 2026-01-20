@@ -476,6 +476,120 @@ azd down --force --purge
 
 ---
 
+### Option 2: GitHub Actions CI/CD
+
+This repository includes GitHub Actions workflows for automated deployment:
+
+| Workflow | File | Purpose |
+|----------|------|---------|
+| **Deploy App** | `.github/workflows/deploy.yml` | Deploy code to App Services (triggers on push to main) |
+| **Deploy Infrastructure** | `.github/workflows/deploy-infra.yml` | Provision/teardown Azure resources via azd |
+| **Agent Weights** | `.github/workflows/agent-weights.yml` | Blue/green deployment via agent weight management |
+
+#### Step 1: Create Azure Service Principal
+
+Create a service principal with OIDC (federated credentials) for passwordless authentication:
+
+```bash
+# Create App Registration
+az ad app create --display-name "github-actions-bing-grounding" --query "appId" -o tsv
+# Note the appId output - this is your AZURE_CLIENT_ID
+
+# Create Service Principal
+az ad sp create --id <AZURE_CLIENT_ID>
+
+# Grant Contributor role to subscription
+az role assignment create \
+  --assignee <AZURE_CLIENT_ID> \
+  --role Contributor \
+  --scope /subscriptions/<AZURE_SUBSCRIPTION_ID>
+```
+
+#### Step 2: Add Federated Credential for GitHub
+
+Create a file `federated-credential.json`:
+
+```json
+{
+  "name": "github-main",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:<YOUR_ORG>/<YOUR_REPO>:ref:refs/heads/main",
+  "audiences": ["api://AzureADTokenExchange"]
+}
+```
+
+Then apply it:
+
+```bash
+az ad app federated-credential create \
+  --id <AZURE_CLIENT_ID> \
+  --parameters federated-credential.json
+```
+
+#### Step 3: Configure GitHub Secrets
+
+Go to your GitHub repository: **Settings** → **Secrets and variables** → **Actions** → **Secrets**
+
+Add these repository secrets:
+
+| Secret | Value | Description |
+|--------|-------|-------------|
+| `AZURE_CLIENT_ID` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | Service principal app ID |
+| `AZURE_TENANT_ID` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | Azure AD tenant ID |
+| `AZURE_SUBSCRIPTION_ID` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | Azure subscription ID |
+| `ADMIN_API_KEY` | (optional) | API key for admin endpoints |
+
+To get your Tenant ID and Subscription ID:
+
+```bash
+az account show --query "{subscriptionId:id, tenantId:tenantId}" -o json
+```
+
+#### Step 4: Configure GitHub Variables
+
+Go to: **Settings** → **Secrets and variables** → **Actions** → **Variables**
+
+Add these repository variables:
+
+| Variable | Example | Description |
+|----------|---------|-------------|
+| `AZURE_LOCATION` | `eastus2` | Primary Azure region |
+| `AZURE_ENV_NAME` | `prod` | azd environment name |
+
+#### Step 5: Configure Environments (Optional)
+
+For deployment protection rules, create environments:
+
+1. Go to **Settings** → **Environments**
+2. Create `production-primary` and `production-secondary`
+3. Add environment-specific variables:
+
+| Environment | Variable | Value |
+|-------------|----------|-------|
+| `production-primary` | `AZURE_WEBAPP_NAME_PRIMARY` | Your primary App Service name |
+| `production-secondary` | `AZURE_WEBAPP_NAME_SECONDARY` | Your secondary App Service name |
+
+**Optional Protection Rules:**
+- ✅ Required reviewers (approval before deploy)
+- ⏱️ Wait timer (delay between environments)
+
+#### Step 6: Run Workflows
+
+**Initial Infrastructure Setup:**
+1. Go to **Actions** → **Deploy Infrastructure**
+2. Click **Run workflow**
+3. Select action: `up`, environment: `prod`
+
+**Code Deployment (automatic):**
+- Triggers on push to `main` branch
+- Or run manually via **Actions** → **Deploy to Azure App Service**
+
+**Blue/Green Deployments:**
+1. Go to **Actions** → **Manage Agent Weights**
+2. Select scenario: `canary-10`, `canary-50`, `green-100`, or `rollback`
+
+---
+
 ## Azure AI Agent Configuration
 
 This service wraps an Azure AI Agent that must be configured with Bing grounding capabilities.
