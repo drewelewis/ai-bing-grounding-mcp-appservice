@@ -110,10 +110,6 @@ jobs:
     if: |
       github.event_name == 'push' || 
       github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_primary == 'true'
-    environment:
-      name: production-primary
-      url: ${{ steps.deploy.outputs.webapp-url }}
-
     steps:
       - name: Download artifact
         uses: actions/download-artifact@v4
@@ -165,10 +161,6 @@ jobs:
       (github.event_name == 'push' || 
        github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_secondary == 'true') &&
       vars.AZURE_WEBAPP_NAME_SECONDARY != ''
-    environment:
-      name: production-secondary
-      url: ${{ steps.deploy.outputs.webapp-url }}
-
     steps:
       - name: Download artifact
         uses: actions/download-artifact@v4
