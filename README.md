@@ -491,11 +491,11 @@ This repository includes GitHub Actions workflows for automated deployment:
 Create a service principal with OIDC (federated credentials) for passwordless authentication:
 
 ```bash
-# Create App Registration
+# Create App Registration - save the output, this is your AZURE_CLIENT_ID
 az ad app create --display-name "github-actions-bing-grounding" --query "appId" -o tsv
-# Note the appId output - this is your AZURE_CLIENT_ID
+# Example output: e10049fa-0e2f-4f0e-889c-aaf6cd9f2137  <-- This is AZURE_CLIENT_ID
 
-# Create Service Principal
+# Create Service Principal (replace with your appId from above)
 az ad sp create --id <AZURE_CLIENT_ID>
 
 # Grant Contributor role to subscription
@@ -504,6 +504,8 @@ az role assignment create \
   --role Contributor \
   --scope /subscriptions/<AZURE_SUBSCRIPTION_ID>
 ```
+
+> **📝 Note:** The `appId` returned from `az ad app create` is your `AZURE_CLIENT_ID`. Save it!
 
 #### Step 2: Add Federated Credential for GitHub
 
@@ -532,14 +534,14 @@ Go to your GitHub repository: **Settings** → **Secrets and variables** → **A
 
 Add these repository secrets:
 
-| Secret | Value | Description |
-|--------|-------|-------------|
-| `AZURE_CLIENT_ID` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | Service principal app ID |
-| `AZURE_TENANT_ID` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | Azure AD tenant ID |
-| `AZURE_SUBSCRIPTION_ID` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | Azure subscription ID |
-| `ADMIN_API_KEY` | (optional) | API key for admin endpoints |
+| Secret | Where to Get It | Description |
+|--------|-----------------|-------------|
+| `AZURE_CLIENT_ID` | Output from `az ad app create` (Step 1) | Service principal app ID |
+| `AZURE_TENANT_ID` | `az account show --query tenantId -o tsv` | Azure AD tenant ID |
+| `AZURE_SUBSCRIPTION_ID` | `az account show --query id -o tsv` | Azure subscription ID |
+| `ADMIN_API_KEY` | (optional - create your own) | API key for admin endpoints |
 
-To get your Tenant ID and Subscription ID:
+**Quick command to get Tenant ID and Subscription ID:**
 
 ```bash
 az account show --query "{subscriptionId:id, tenantId:tenantId}" -o json
