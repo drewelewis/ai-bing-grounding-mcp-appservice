@@ -1,0 +1,23 @@
+﻿{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "resources": [
+    {
+      "type": "Microsoft.Bing/accounts",
+      "apiVersion": "2020-06-10",
+      "name": "bing-grounding-qa",
+      "location": "global",
+      "kind": "Bing.Grounding",
+      "sku": {
+        "name": "F0"
+      },
+      "properties": {}
+    }
+  ],
+  "outputs": {
+    "resourceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Bing/accounts', 'bing-grounding-qa')]"
+    }
+  }
+}

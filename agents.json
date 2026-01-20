@@ -1,0 +1,20 @@
+{
+  "description": "Agent pool configuration - 1 agent per model (multi-region scaling handled by regional deployments)",
+  "recommendation": "For multi-region deployments, use 1 agent per model per region. Regional APIM routing provides throughput scaling.",
+  "agents": [
+    {
+      "id": "asst_xxx123",
+      "model": "gpt-4o",
+      "name": "bing-gpt4o",
+      "description": "GPT-4o agent with Bing grounding",
+      "index": 1
+    },
+    {
+      "id": "asst_yyy456",
+      "model": "gpt-4.1-mini",
+      "name": "bing-gpt41mini",
+      "description": "GPT-4.1-mini agent with Bing grounding",
+      "index": 1
+    }
+  ]
+}

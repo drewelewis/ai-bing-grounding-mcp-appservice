@@ -1,0 +1,144 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_CONTAINER_REGISTRY: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+  IMAGE_NAME: bing-grounding-api
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Azure Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+        username: ${{ secrets.ACR_USERNAME }}
+        password: ${{ secrets.ACR_PASSWORD }}
+
+    - name: Extract metadata for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ secrets.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=sha,prefix={{branch}}-
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=registry,ref=${{ secrets.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+        cache-to: type=registry,ref=${{ secrets.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+    - name: Output image tags
+      run: |
+        echo "Built and pushed the following tags:"
+        echo "${{ steps.meta.outputs.tags }}"
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Get Container App instances
+      id: get-apps
+      run: |
+        RESOURCE_GROUP="${{ secrets.AZURE_RESOURCE_GROUP }}"
+        CONTAINER_APP_PREFIX="${{ secrets.AZURE_CONTAINER_APP_PREFIX }}"
+        
+        # Get all container apps matching the prefix
+        APPS=$(az containerapp list --resource-group $RESOURCE_GROUP --query "[?starts_with(name, '$CONTAINER_APP_PREFIX')].name" -o tsv)
+        
+        echo "Found container apps:"
+        echo "$APPS"
+        echo "apps=$APPS" >> $GITHUB_OUTPUT
+
+    - name: Deploy to Container Apps
+      run: |
+        RESOURCE_GROUP="${{ secrets.AZURE_RESOURCE_GROUP }}"
+        IMAGE_TAG="${{ secrets.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:main-${{ github.sha }}"
+        
+        # Deploy to each container app instance
+        for APP_NAME in ${{ steps.get-apps.outputs.apps }}; do
+          echo "Deploying to $APP_NAME..."
+          az containerapp update \
+            --name $APP_NAME \
+            --resource-group $RESOURCE_GROUP \
+            --image $IMAGE_TAG
+          
+          echo "✓ Successfully deployed to $APP_NAME"
+        done
+
+    - name: Verify deployment
+      run: |
+        RESOURCE_GROUP="${{ secrets.AZURE_RESOURCE_GROUP }}"
+        
+        for APP_NAME in ${{ steps.get-apps.outputs.apps }}; do
+          # Get the FQDN
+          FQDN=$(az containerapp show \
+            --name $APP_NAME \
+            --resource-group $RESOURCE_GROUP \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          
+          echo "Testing health endpoint for $APP_NAME at https://$FQDN"
+          
+          # Test health endpoint
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://$FQDN/health)
+          
+          if [ "$RESPONSE" = "200" ]; then
+            echo "✓ $APP_NAME is healthy (HTTP $RESPONSE)"
+          else
+            echo "⚠ $APP_NAME returned HTTP $RESPONSE"
+            exit 1
+          fi
+        done
+
+    - name: Deployment summary
+      run: |
+        echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "✅ Successfully deployed image: \`${{ secrets.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:main-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Deployed to the following Container Apps:" >> $GITHUB_STEP_SUMMARY
+        for APP_NAME in ${{ steps.get-apps.outputs.apps }}; do
+          echo "- $APP_NAME" >> $GITHUB_STEP_SUMMARY
+        done

@@ -1,0 +1,1 @@
+_env_activate && _install && uvicorn app.main:app --reload

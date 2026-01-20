@@ -1,0 +1,85 @@
+<!--
+    Azure API Management Health Check Monitor Policy
+    
+    This policy should be applied to a scheduled operation that runs every 30 seconds
+    to monitor backend health and update the cache.
+    
+    To set this up in APIM:
+    1. Create a new operation: GET /internal/health-monitor (or any path you choose)
+    2. Apply this policy to that operation
+    3. Use Azure Logic Apps or Azure Functions with a timer trigger to call this endpoint every 30 seconds
+    4. Alternatively, use Application Insights availability tests to trigger health checks
+-->
+<policies>
+    <inbound>
+        <base />
+        
+        <!-- Return immediately without forwarding to backend -->
+        <return-response>
+            <set-status code="200" reason="OK" />
+            <set-header name="Content-Type" exists-action="override">
+                <value>application/json</value>
+            </set-header>
+            <set-body>@{
+                var backends = new[] {
+                    new { url = "https://your-app-instance-1.azurecontainerapps.io/health", id = "0" },
+                    new { url = "https://your-app-instance-2.azurecontainerapps.io/health", id = "1" },
+                    new { url = "https://your-app-instance-3.azurecontainerapps.io/health", id = "2" },
+                    new { url = "https://your-app-instance-4.azurecontainerapps.io/health", id = "3" },
+                    new { url = "https://your-app-instance-5.azurecontainerapps.io/health", id = "4" }
+                };
+                
+                var results = new JArray();
+                
+                foreach (var backend in backends)
+                {
+                    try
+                    {
+                        var healthCheckUrl = backend.url;
+                        var response = new HttpClient().GetAsync(healthCheckUrl).Result;
+                        var status = response.IsSuccessStatusCode ? "healthy" : "unhealthy";
+                        var statusCode = (int)response.StatusCode;
+                        
+                        // Store health status in cache (30 second TTL)
+                        context.Cache.Store("backend-health-" + backend.id, status, 30);
+                        
+                        results.Add(new JObject {
+                            ["instance_id"] = backend.id,
+                            ["url"] = healthCheckUrl,
+                            ["status"] = status,
+                            ["status_code"] = statusCode,
+                            ["timestamp"] = DateTime.UtcNow.ToString("o")
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        // Mark as unhealthy on exception
+                        context.Cache.Store("backend-health-" + backend.id, "unhealthy", 30);
+                        
+                        results.Add(new JObject {
+                            ["instance_id"] = backend.id,
+                            ["url"] = backend.url,
+                            ["status"] = "unhealthy",
+                            ["error"] = ex.Message,
+                            ["timestamp"] = DateTime.UtcNow.ToString("o")
+                        });
+                    }
+                }
+                
+                return new JObject {
+                    ["health_check_timestamp"] = DateTime.UtcNow.ToString("o"),
+                    ["backends"] = results
+                }.ToString();
+            }</set-body>
+        </return-response>
+    </inbound>
+    <backend>
+        <base />
+    </backend>
+    <outbound>
+        <base />
+    </outbound>
+    <on-error>
+        <base />
+    </on-error>
+</policies>

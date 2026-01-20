@@ -1,0 +1,11 @@
+{
+  "resourcesResourceGroups": "rg-",
+  "apiManagementService": "apim-",
+  "cognitiveServicesAccounts": "ai-",
+  "appManagedEnvironments": "cae-",
+  "appContainerApps": "ca-",
+  "containerRegistryRegistries": "acr",
+  "bingAccounts": "bing-",
+  "webServerFarms": "asp-",
+  "webSitesAppService": "app-"
+}

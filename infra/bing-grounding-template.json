@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "bingResourceName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the Bing Grounding resource"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "global",
+      "metadata": {
+        "description": "Location for the Bing Grounding resource"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Bing/accounts",
+      "apiVersion": "2020-06-10",
+      "name": "[parameters('bingResourceName')]",
+      "location": "[parameters('location')]",
+      "kind": "Bing.Grounding",
+      "sku": {
+        "name": "F0"
+      },
+      "properties": {}
+    }
+  ],
+  "outputs": {
+    "bingResourceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Bing/accounts', parameters('bingResourceName'))]"
+    },
+    "bingResourceName": {
+      "type": "string",
+      "value": "[parameters('bingResourceName')]"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "location": "global",
+  "kind": "Bing.Grounding",
+  "sku": {
+    "name": "F0"
+  },
+  "properties": {}
+}

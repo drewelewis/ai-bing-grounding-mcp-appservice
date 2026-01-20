@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "category": "BingGrounding",
+    "target": "https://api.bing.microsoft.com/",
+    "authType": "None",
+    "metadata": {
+      "ApiType": "grounding",
+      "BingResourceId": "/subscriptions/d201ebeb-c470-4a6f-82d5-c2f95bb0dc1e/resourceGroups/rg-bing-grounding-mcp-dev6/providers/Microsoft.Bing/accounts/bing-grounding-mcp"
+    }
+  }
+}

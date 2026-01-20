@@ -1,0 +1,50 @@
+name: bing-grounding-api
+metadata:
+  template: bing-grounding-api@0.0.1-beta
+
+# Root-level hooks run for ALL azd commands
+hooks:
+  preprovision:
+    windows:
+      shell: pwsh
+      run: python scripts/preprovision_read_model_config.py ; python scripts/preprovision_purge_soft_deleted.py ; python scripts/preprovision_check_resource_group.py ; python scripts/preprovision_register_providers.py ; python scripts/preprovision_select_bing_resource.py
+      continueOnError: false
+      interactive: true
+    posix:
+      shell: sh
+      run: python scripts/preprovision_read_model_config.py && python scripts/preprovision_purge_soft_deleted.py && python scripts/preprovision_check_resource_group.py && python scripts/preprovision_register_providers.py && python scripts/preprovision_select_bing_resource.py
+      continueOnError: false
+      interactive: true
+  postprovision:
+    windows:
+      shell: pwsh
+      run: python scripts/postprovision_deploy_models.py ; python scripts/postprovision_deploy_bing_connection.py ; python scripts/postprovision_create_agents.py
+      continueOnError: false
+      interactive: false
+    posix:
+      shell: sh
+      run: python scripts/postprovision_deploy_models.py && python scripts/postprovision_deploy_bing_connection.py && python scripts/postprovision_create_agents.py
+      continueOnError: false
+      interactive: false
+
+services:
+  api:
+    project: .
+    language: py
+    host: appservice
+    hooks:
+      postdeploy:
+        windows:
+          shell: pwsh
+          run: python scripts/postdeploy_configure_appservice.py
+          continueOnError: false
+          interactive: true
+        posix:
+          shell: sh
+          run: python scripts/postdeploy_configure_appservice.py
+          continueOnError: false
+          interactive: true
+
+# Default environment (optional - azd will prompt if not set)
+# You can override this by setting AZURE_ENV_NAME environment variable
+# or using: azd env select <env-name>

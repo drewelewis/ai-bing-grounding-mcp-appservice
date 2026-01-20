@@ -1,0 +1,10 @@
+{
+  "github.copilot.chat.mcpServers": {
+    "bing-grounding": {
+      "transport": {
+        "type": "streamableHTTP",
+        "url": "https://apim-vw5lt6yc7noze.azure-api.net/bing-grounding-mcp/mcp"
+      }
+    }
+  }
+}
