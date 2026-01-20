@@ -13,6 +13,9 @@ param agentPoolSizeGpt4o int = 0
 param agentPoolSizeGpt4 int = 0
 param agentPoolSizeGpt35Turbo int = 0
 
+// Skip APIM in secondary regions (use primary APIM)
+param skipApim bool = false
+
 // Storage Account for AI Hub
 resource storage 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: 'st${uniqueString(resourceGroup().id)}'
@@ -250,8 +253,8 @@ resource deploymentGpt35Turbo 'Microsoft.CognitiveServices/accounts/deployments@
   ]
 }
 
-// API Management Service
-resource apim 'Microsoft.ApiManagement/service@2023-05-01-preview' = {
+// API Management Service (only deployed in primary region)
+resource apim 'Microsoft.ApiManagement/service@2023-05-01-preview' = if (!skipApim) {
   name: apimServiceName
   location: location
   tags: tags
@@ -269,8 +272,8 @@ resource apim 'Microsoft.ApiManagement/service@2023-05-01-preview' = {
 }
 
 // Outputs
-output apimName string = apim.name
-output apimGatewayUrl string = apim.properties.gatewayUrl
+output apimName string = skipApim ? '' : apim.name
+output apimGatewayUrl string = skipApim ? '' : apim!.properties.gatewayUrl
 output foundryName string = foundry.name
 output projectName string = project.name
 output projectEndpoint string = 'https://${foundryName}.services.ai.azure.com/api/projects/${projectName}'

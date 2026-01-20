@@ -6,13 +6,10 @@ param foundryEndpoint string
 param projectName string
 param pythonVersion string = '3.11'
 
-// App Service location - use East US 2 where quota exists
-var appServiceLocation = 'eastus2'
-
 // App Service Plan (Linux)
 resource appServicePlan 'Microsoft.Web/serverfarms@2022-09-01' = {
   name: appServicePlanName
-  location: appServiceLocation
+  location: location
   tags: tags
   sku: {
     name: 'B1'
@@ -27,7 +24,7 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2022-09-01' = {
 // Web App for FastAPI
 resource webApp 'Microsoft.Web/sites@2022-09-01' = {
   name: webAppName
-  location: appServiceLocation
+  location: location
   tags: union(tags, {
     'azd-service-name': 'appservice'
   })

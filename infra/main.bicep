@@ -9,8 +9,14 @@ param environmentName string
 @description('Primary location for all resources')
 param location string
 
+@description('Secondary location for multi-region deployment. Leave empty for single region.')
+param locationSecondary string = ''
+
 @description('Name of the resource group. If empty, a name will be generated.')
 param resourceGroupName string = ''
+
+@description('Name of the secondary resource group. If empty, a name will be generated.')
+param resourceGroupNameSecondary string = ''
 
 @description('Name of the API Management service. If empty, a name will be generated.')
 param apimServiceName string = ''
@@ -52,19 +58,33 @@ param agentPoolSizeGpt35Turbo int = 0
 // Generate resource names
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
+var resourceTokenSecondary = !empty(locationSecondary) ? toLower(uniqueString(subscription().id, environmentName, locationSecondary)) : ''
 var tags = { 'azd-env-name': environmentName }
+var deploySecondaryRegion = !empty(locationSecondary)
 
 var finalResourceGroupName = !empty(resourceGroupName) ? resourceGroupName : '${abbrs.resourcesResourceGroups}bing-grounding-mcp-${environmentName}'
+var finalResourceGroupNameSecondary = !empty(resourceGroupNameSecondary) ? resourceGroupNameSecondary : '${abbrs.resourcesResourceGroups}bing-grounding-mcp-${environmentName}-secondary'
 var finalApimName = !empty(apimServiceName) ? apimServiceName : '${abbrs.apiManagementService}${resourceToken}'
 var finalFoundryName = !empty(foundryName) ? foundryName : '${abbrs.cognitiveServicesAccounts}foundry-${resourceToken}'
+var finalFoundryNameSecondary = '${abbrs.cognitiveServicesAccounts}foundry-${resourceTokenSecondary}'
 var finalProjectName = !empty(projectName) ? projectName : '${abbrs.cognitiveServicesAccounts}proj-${resourceToken}'
+var finalProjectNameSecondary = '${abbrs.cognitiveServicesAccounts}proj-${resourceTokenSecondary}'
 var finalAppServicePlanName = !empty(appServicePlanName) ? appServicePlanName : '${abbrs.webServerFarms}${resourceToken}'
+var finalAppServicePlanNameSecondary = '${abbrs.webServerFarms}${resourceTokenSecondary}'
 var finalWebAppName = !empty(webAppName) ? webAppName : '${abbrs.webSitesAppService}${resourceToken}'
+var finalWebAppNameSecondary = '${abbrs.webSitesAppService}${resourceTokenSecondary}'
 
-// Resource Group
+// Primary Resource Group
 resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
   name: finalResourceGroupName
   location: location
+  tags: tags
+}
+
+// Secondary Resource Group (only if secondary location specified)
+resource rgSecondary 'Microsoft.Resources/resourceGroups@2021-04-01' = if (deploySecondaryRegion) {
+  name: finalResourceGroupNameSecondary
+  location: locationSecondary
   tags: tags
 }
 
@@ -116,7 +136,63 @@ module webAppRoleAssignment './webapp-role-assignment.bicep' = {
   }
 }
 
-// Outputs
+// ============================================================================
+// SECONDARY REGION RESOURCES (only deployed if locationSecondary is specified)
+// ============================================================================
+
+// Deploy secondary region resources (AI Foundry, models - NO APIM)
+module resourcesSecondary './resources-appservice.bicep' = if (deploySecondaryRegion) {
+  name: 'resources-secondary'
+  scope: rgSecondary
+  params: {
+    location: locationSecondary
+    tags: tags
+    apimServiceName: '' // No APIM in secondary - use primary
+    foundryName: finalFoundryNameSecondary
+    projectName: finalProjectNameSecondary
+    // Model pool configuration (same as primary)
+    agentPoolSizeGpt41: agentPoolSizeGpt41
+    agentPoolSizeGpt5: agentPoolSizeGpt5
+    agentPoolSizeGpt5Mini: agentPoolSizeGpt5Mini
+    agentPoolSizeGpt5Nano: agentPoolSizeGpt5Nano
+    agentPoolSizeGpt4o: agentPoolSizeGpt4o
+    agentPoolSizeGpt4: agentPoolSizeGpt4
+    agentPoolSizeGpt35Turbo: agentPoolSizeGpt35Turbo
+    skipApim: true // Flag to skip APIM in secondary
+  }
+}
+
+// Deploy Secondary App Service
+module appServiceSecondary './appservice.bicep' = if (deploySecondaryRegion) {
+  name: 'appservice-secondary'
+  scope: rgSecondary
+  params: {
+    location: locationSecondary
+    tags: tags
+    appServicePlanName: finalAppServicePlanNameSecondary
+    webAppName: finalWebAppNameSecondary
+    foundryEndpoint: resourcesSecondary!.outputs.projectEndpoint
+    projectName: resourcesSecondary!.outputs.projectName
+  }
+}
+
+// Grant Secondary Web App managed identity access to Secondary Foundry Project
+module webAppRoleAssignmentSecondary './webapp-role-assignment.bicep' = if (deploySecondaryRegion) {
+  name: 'webapp-role-assignment-secondary'
+  scope: rgSecondary
+  params: {
+    projectResourceId: resourcesSecondary!.outputs.projectResourceId
+    webAppPrincipalId: appServiceSecondary!.outputs.webAppPrincipalId
+    foundryName: resourcesSecondary!.outputs.foundryName
+    projectName: resourcesSecondary!.outputs.projectName
+  }
+}
+
+// ============================================================================
+// OUTPUTS
+// ============================================================================
+
+// Primary Region Outputs
 output AZURE_LOCATION string = location
 output AZURE_RESOURCE_GROUP string = rg.name
 output AZURE_APIM_NAME string = resources.outputs.apimName
@@ -129,3 +205,14 @@ output AZURE_OPENAI_MODEL_GPT4O string = resources.outputs.gpt4oDeploymentName
 output AZURE_WEBAPP_NAME string = appService.outputs.webAppName
 output AZURE_WEBAPP_ENDPOINT string = appService.outputs.webAppEndpoint
 output AZURE_BING_CONNECTION_ID string = '/subscriptions/${subscription().subscriptionId}/resourceGroups/${rg.name}/providers/Microsoft.CognitiveServices/accounts/${finalFoundryName}/projects/${finalProjectName}/connections/default-bing'
+
+// Secondary Region Outputs (conditional)
+output AZURE_LOCATION_SECONDARY string = locationSecondary
+output AZURE_RESOURCE_GROUP_SECONDARY string = deploySecondaryRegion ? rgSecondary.name : ''
+output AZURE_FOUNDRY_NAME_SECONDARY string = deploySecondaryRegion ? resourcesSecondary!.outputs.foundryName : ''
+output AZURE_AI_PROJECT_NAME_SECONDARY string = deploySecondaryRegion ? resourcesSecondary!.outputs.projectName : ''
+output AZURE_AI_PROJECT_ENDPOINT_SECONDARY string = deploySecondaryRegion ? resourcesSecondary!.outputs.projectEndpoint : ''
+output AZURE_AI_PROJECT_RESOURCE_ID_SECONDARY string = deploySecondaryRegion ? resourcesSecondary!.outputs.projectResourceId : ''
+output AZURE_WEBAPP_NAME_SECONDARY string = deploySecondaryRegion ? appServiceSecondary!.outputs.webAppName : ''
+output AZURE_WEBAPP_ENDPOINT_SECONDARY string = deploySecondaryRegion ? appServiceSecondary!.outputs.webAppEndpoint : ''
+output AZURE_BING_CONNECTION_ID_SECONDARY string = deploySecondaryRegion ? '/subscriptions/${subscription().subscriptionId}/resourceGroups/${rgSecondary.name}/providers/Microsoft.CognitiveServices/accounts/${finalFoundryNameSecondary}/projects/${finalProjectNameSecondary}/connections/default-bing' : ''
