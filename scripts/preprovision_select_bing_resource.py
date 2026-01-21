@@ -7,6 +7,10 @@ This script lists available Bing Grounding resources in the subscription
 and allows the user to select one. If none exist, provides instructions
 to create one via the Portal.
 
+In CI/CD mode (detected by CI or GITHUB_ACTIONS env vars), the script will:
+- Auto-generate Bing resource naming for creation in postprovision
+- Skip interactive selection
+
 The selected resource ID is saved to .env for use during agent creation.
 
 Usage:
@@ -17,6 +21,10 @@ import sys
 import json
 import subprocess
 from pathlib import Path
+
+def is_ci_mode() -> bool:
+    """Check if running in CI/CD environment"""
+    return os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true"
 
 def run_command(cmd: list[str]) -> tuple[bool, str, str]:
     """
@@ -140,6 +148,12 @@ def main():
     print("=" * 80)
     print()
     
+    # Check for CI/CD mode
+    ci_mode = is_ci_mode()
+    if ci_mode:
+        print("[INFO] CI/CD mode detected - will auto-configure Bing resource")
+        print()
+    
     # Get subscription ID
     subscription_id = get_env_value("AZURE_SUBSCRIPTION_ID")
     
@@ -174,6 +188,33 @@ def main():
     resources = list_bing_resources(subscription_id, target_resource_group)
     
     if not resources:
+        # In CI/CD mode, set up for auto-creation in postprovision
+        if ci_mode:
+            print()
+            print("=" * 80)
+            print("CI/CD MODE: AUTO-CONFIGURE BING RESOURCE")
+            print("=" * 80)
+            print()
+            print("[INFO] No existing Bing resource found. Setting up for auto-creation...")
+            
+            # Generate a predictable Bing resource name based on environment
+            env_name = get_env_value("AZURE_ENV_NAME") or "prod"
+            bing_resource_name = f"bing-grounding-{env_name}"
+            bing_resource_id = f"/subscriptions/{subscription_id}/resourceGroups/{target_resource_group}/providers/Microsoft.Bing/accounts/{bing_resource_name}"
+            
+            # Set environment values for postprovision to use
+            set_env_value("BING_GROUNDING_RESOURCE_NAME", bing_resource_name)
+            set_env_value("BING_GROUNDING_RESOURCE_GROUP", target_resource_group)
+            set_env_value("BING_GROUNDING_RESOURCE_ID", bing_resource_id)
+            set_env_value("BING_GROUNDING_CREATE_NEW", "true")  # Flag for postprovision
+            
+            print(f"[INFO] Bing Resource Name: {bing_resource_name}")
+            print(f"[INFO] Bing Resource Group: {target_resource_group}")
+            print(f"[INFO] BING_GROUNDING_CREATE_NEW=true (will be created in postprovision)")
+            print()
+            print("=" * 80)
+            return 0
+        
         print()
         print("=" * 80)
         print("NO BING GROUNDING RESOURCE FOUND IN TARGET RESOURCE GROUP")
@@ -210,31 +251,36 @@ def main():
         print(f"      ID: {resource['id']}")
         print()
     
-    # Prompt user to select
-    print("[2/2] Select a Bing Grounding resource:")
-    
-    while True:
-        try:
-            choice = input(f"Enter number (1-{len(resources)}) or 'q' to quit: ").strip()
-            
-            if choice.lower() == 'q':
+    # In CI/CD mode, auto-select first matching resource
+    if ci_mode:
+        print("[INFO] CI/CD mode - auto-selecting first resource")
+        selected = resources[0]
+    else:
+        # Prompt user to select
+        print("[2/2] Select a Bing Grounding resource:")
+        
+        while True:
+            try:
+                choice = input(f"Enter number (1-{len(resources)}) or 'q' to quit: ").strip()
+                
+                if choice.lower() == 'q':
+                    print()
+                    print("[CANCELLED] Deployment cancelled by user")
+                    return 1
+                
+                choice_num = int(choice)
+                if 1 <= choice_num <= len(resources):
+                    selected = resources[choice_num - 1]
+                    break
+                else:
+                    print(f"  [ERROR] Please enter a number between 1 and {len(resources)}")
+            except ValueError:
+                print(f"  [ERROR] Please enter a valid number or 'q' to quit")
+            except KeyboardInterrupt:
+                print()
                 print()
                 print("[CANCELLED] Deployment cancelled by user")
                 return 1
-            
-            choice_num = int(choice)
-            if 1 <= choice_num <= len(resources):
-                selected = resources[choice_num - 1]
-                break
-            else:
-                print(f"  [ERROR] Please enter a number between 1 and {len(resources)}")
-        except ValueError:
-            print(f"  [ERROR] Please enter a valid number or 'q' to quit")
-        except KeyboardInterrupt:
-            print()
-            print()
-            print("[CANCELLED] Deployment cancelled by user")
-            return 1
     
     # Save selected resource ID to .env
     resource_id = selected['id']

@@ -6,6 +6,9 @@ Create Bing Grounding connection in AI Foundry via Bicep deployment.
 This script deploys the bing-connection.bicep module to create the
 required connection between AI Foundry and the Bing Grounding resource.
 
+In CI/CD mode, if BING_GROUNDING_CREATE_NEW=true, this script will also
+create the Bing Grounding resource before creating the connection.
+
 Usage:
     python scripts/postprovision_deploy_bing_connection.py
 """
@@ -40,7 +43,7 @@ def run_command(cmd: list[str]) -> tuple[bool, str, str]:
         return False, "", str(e)
 
 def get_env_value(key: str) -> str:
-    """Get environment variable from .azure/{env}/.env"""
+    """Get environment variable from .azure/{env}/.env or OS environment"""
     import json
     config_file = Path(".azure/config.json")
     env_name = "prod"
@@ -66,6 +69,52 @@ def get_env_value(key: str) -> str:
     # Fallback to environment variable
     return os.environ.get(key, "")
 
+
+def create_bing_resource(subscription_id: str, resource_group: str, resource_name: str, location: str = "global") -> bool:
+    """
+    Create Bing Grounding resource using az CLI.
+    Returns True if successful, False otherwise.
+    """
+    print()
+    print("=" * 80)
+    print("Creating Bing Grounding Resource")
+    print("=" * 80)
+    print()
+    print(f"📋 Resource Details:")
+    print(f"   Subscription: {subscription_id}")
+    print(f"   Resource Group: {resource_group}")
+    print(f"   Resource Name: {resource_name}")
+    print(f"   Location: {location}")
+    print()
+    
+    # Use az resource create to create the Bing resource
+    cmd = [
+        "az", "resource", "create",
+        "--subscription", subscription_id,
+        "--resource-group", resource_group,
+        "--name", resource_name,
+        "--resource-type", "Microsoft.Bing/accounts",
+        "--location", location,
+        "--properties", json.dumps({}),
+        "--kind", "Bing.Grounding",
+        "--sku", "F0"
+    ]
+    
+    print("🚀 Creating Bing Grounding resource...")
+    success, stdout, stderr = run_command(cmd)
+    
+    if not success:
+        # Check if it already exists
+        if "already exists" in stderr.lower() or "conflict" in stderr.lower():
+            print("✅ Bing resource already exists - continuing...")
+            return True
+        print(f"❌ ERROR: Failed to create Bing resource")
+        print(f"   Error: {stderr}")
+        return False
+    
+    print("✅ Bing Grounding resource created successfully!")
+    return True
+
 def main():
     print("=" * 80)
     print("Create Bing Grounding Connection via Bicep Deployment")
@@ -79,6 +128,38 @@ def main():
     bing_resource_id = get_env_value("BING_GROUNDING_RESOURCE_ID")
     bing_resource_group = get_env_value("BING_GROUNDING_RESOURCE_GROUP")
     bing_resource_name = get_env_value("BING_GROUNDING_RESOURCE_NAME")
+    create_new_bing = get_env_value("BING_GROUNDING_CREATE_NEW") == "true"
+    
+    # In CI/CD mode, we may need to create the Bing resource first
+    if create_new_bing:
+        print("[INFO] BING_GROUNDING_CREATE_NEW=true detected")
+        print("[INFO] Will create Bing resource before creating connection...")
+        print()
+        
+        if not all([subscription_id, resource_group, bing_resource_name]):
+            print("❌ ERROR: Missing required environment variables for Bing creation")
+            print(f"   AZURE_SUBSCRIPTION_ID: {subscription_id}")
+            print(f"   AZURE_RESOURCE_GROUP: {resource_group}")
+            print(f"   BING_GROUNDING_RESOURCE_NAME: {bing_resource_name}")
+            return 1
+        
+        # Use target resource group for Bing (same as AI Foundry)
+        bing_resource_group = resource_group
+        
+        # Create the Bing resource
+        if not create_bing_resource(subscription_id, bing_resource_group, bing_resource_name):
+            print("❌ ERROR: Failed to create Bing Grounding resource")
+            print()
+            print("You may need to create the Bing resource manually:")
+            print("1. Open: https://portal.azure.com/#create/Microsoft.BingGroundingSearch")
+            print(f"2. Resource Group: {resource_group}")
+            print(f"3. Name: {bing_resource_name}")
+            print("4. Pricing Tier: F0 (Free)")
+            return 1
+        
+        # Update the resource ID after creation
+        bing_resource_id = f"/subscriptions/{subscription_id}/resourceGroups/{bing_resource_group}/providers/Microsoft.Bing/accounts/{bing_resource_name}"
+        print()
     
     if not all([subscription_id, resource_group, foundry_name, bing_resource_id, bing_resource_group, bing_resource_name]):
         print("❌ ERROR: Missing required environment variables")
