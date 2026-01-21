@@ -507,26 +507,47 @@ az role assignment create \
 
 > **📝 Note:** The `appId` returned from `az ad app create` is your `AZURE_CLIENT_ID`. Save it!
 
-#### Step 2: Add Federated Credential for GitHub
+#### Step 2: Add Federated Credentials for GitHub OIDC
 
-Create a file `federated-credential.json`:
+You need federated credentials for each context where workflows run. Create credentials for:
 
-```json
-{
-  "name": "github-main",
+1. **Main branch** (for push-triggered deployments)
+2. **Environment: prod** (for environment-protected deployments)
+3. **Pull requests** (optional, for PR validation)
+
+```bash
+# Get your Azure Client ID (App Registration ID)
+AZURE_CLIENT_ID="<your-app-id-from-step-1>"
+
+# 1. Federated credential for main branch
+az ad app federated-credential create --id $AZURE_CLIENT_ID --parameters '{
+  "name": "github-main-branch",
   "issuer": "https://token.actions.githubusercontent.com",
   "subject": "repo:<YOUR_ORG>/<YOUR_REPO>:ref:refs/heads/main",
   "audiences": ["api://AzureADTokenExchange"]
-}
+}'
+
+# 2. Federated credential for 'prod' environment (REQUIRED for deploy-infra.yml)
+az ad app federated-credential create --id $AZURE_CLIENT_ID --parameters '{
+  "name": "github-prod-environment",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:<YOUR_ORG>/<YOUR_REPO>:environment:prod",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+
+# 3. (Optional) Federated credential for pull requests
+az ad app federated-credential create --id $AZURE_CLIENT_ID --parameters '{
+  "name": "github-pull-requests",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:<YOUR_ORG>/<YOUR_REPO>:pull_request",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
 ```
 
-Then apply it:
-
-```bash
-az ad app federated-credential create \
-  --id <AZURE_CLIENT_ID> \
-  --parameters federated-credential.json
-```
+> **⚠️ Important:** The `subject` claim must exactly match how GitHub presents the token:
+> - Branch: `repo:owner/repo:ref:refs/heads/main`
+> - Environment: `repo:owner/repo:environment:prod`
+> - Pull Request: `repo:owner/repo:pull_request`
 
 #### Step 3: Configure GitHub Secrets
 
@@ -555,7 +576,8 @@ Add these repository variables:
 
 | Variable | Example | Description |
 |----------|---------|-------------|
-| `AZURE_LOCATION` | `eastus2` | Primary Azure region |
+| `AZURE_LOCATION_PRIMARY` | `eastus2` | Primary Azure region |
+| `AZURE_LOCATION_SECONDARY` | `westus2` | Secondary region (leave empty for single-region) |
 | `AZURE_ENV_NAME` | `prod` | azd environment name |
 
 #### Step 5: Configure Environments (Optional)
