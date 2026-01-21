@@ -591,7 +591,11 @@ For deployment protection rules, create environments:
 | Environment | Variable | Value |
 |-------------|----------|-------|
 | `production-primary` | `AZURE_WEBAPP_NAME_PRIMARY` | Your primary App Service name |
+| `production-primary` | `AZURE_AI_PROJECT_ENDPOINT_PRIMARY` | Primary AI Project endpoint |
 | `production-secondary` | `AZURE_WEBAPP_NAME_SECONDARY` | Your secondary App Service name |
+| `production-secondary` | `AZURE_AI_PROJECT_ENDPOINT_SECONDARY` | Secondary AI Project endpoint |
+
+> **📝 Note:** The `AZURE_AI_PROJECT_ENDPOINT_*` values are output after running `Deploy Infrastructure`. They look like: `https://cog-foundry-xxx.services.ai.azure.com/api/projects/cog-proj-xxx`
 
 **Optional Protection Rules:**
 - ✅ Required reviewers (approval before deploy)
@@ -602,7 +606,8 @@ For deployment protection rules, create environments:
 **Initial Infrastructure Setup:**
 1. Go to **Actions** → **Deploy Infrastructure**
 2. Click **Run workflow**
-3. Select action: `up`, environment: `prod`
+3. Select action: `provision`, environment: `prod`
+4. After completion, copy the output values for `AZURE_AI_PROJECT_ENDPOINT` and add them to your GitHub environments
 
 **Code Deployment (automatic):**
 - Triggers on push to `main` branch
@@ -611,6 +616,24 @@ For deployment protection rules, create environments:
 **Blue/Green Deployments:**
 1. Go to **Actions** → **Manage Agent Weights**
 2. Select scenario: `canary-10`, `canary-50`, `green-100`, or `rollback`
+
+#### Agent Configuration
+
+Agents are configured via `agents.config.json` (checked into repo) and created/updated during app deployment:
+
+```json
+{
+  "models": {
+    "gpt4o": { "enabled": true, "agentPoolSize": 2, "modelId": "gpt-4o" },
+    "gpt41mini": { "enabled": true, "agentPoolSize": 2, "modelId": "gpt-4.1-mini" }
+  }
+}
+```
+
+**This enables:**
+- ✅ Change `agents.config.json` → Push → Agents updated automatically
+- ✅ Change prompts or weights during deploy
+- ✅ Different agent configs per environment
 
 ---
 
