@@ -1,0 +1,29 @@
+{
+  "description": "Model deployment and agent pool configuration. This file is safe to check in.",
+  "models": {
+    "gpt-4o": {
+      "enabled": true,
+      "agentPoolSize": 2,
+      "description": "GPT-4o - Best for complex reasoning and grounding tasks"
+    },
+    "gpt-4.1-mini": {
+      "enabled": true,
+      "agentPoolSize": 2,
+      "description": "GPT-4.1-mini - Cost-effective for simpler queries"
+    },
+    "gpt-4": {
+      "enabled": false,
+      "agentPoolSize": 0,
+      "description": "GPT-4 - Legacy model"
+    },
+    "gpt-35-turbo": {
+      "enabled": false,
+      "agentPoolSize": 0,
+      "description": "GPT-3.5-turbo - Fastest, lowest cost"
+    }
+  },
+  "defaults": {
+    "agentNamePrefix": "bing",
+    "bingGrounding": true
+  }
+}
