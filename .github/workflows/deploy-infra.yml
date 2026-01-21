@@ -195,17 +195,56 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_ENV_NAME: ${{ needs.validate.outputs.environment_name }}
 
-      - name: Output summary
+      - name: Output provisioned resources
         run: |
-          echo "## Provision Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Provision Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Get azd environment values
+          echo "### Configuration" >> $GITHUB_STEP_SUMMARY
           echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Environment | ${{ needs.validate.outputs.environment_name }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Primary Region | ${{ vars.AZURE_LOCATION_PRIMARY }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Secondary Region | ${{ vars.AZURE_LOCATION_SECONDARY }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Get outputs from azd
+          echo "### Primary Region Resources" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          azd env get-values | grep -E "^AZURE_(WEBAPP|AI_PROJECT|FOUNDRY|APIM|RESOURCE_GROUP)" | head -20 >> $GITHUB_STEP_SUMMARY || echo "Unable to retrieve values" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Print values needed for GitHub environment setup
+          echo "### ⚠️ Required GitHub Environment Variables" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Copy these values to your GitHub environment variables:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**For \`production-primary\` environment:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "AZURE_WEBAPP_NAME_PRIMARY=$(azd env get-value AZURE_WEBAPP_NAME 2>/dev/null || echo 'N/A')" >> $GITHUB_STEP_SUMMARY
+          echo "AZURE_AI_PROJECT_ENDPOINT_PRIMARY=$(azd env get-value AZURE_AI_PROJECT_ENDPOINT 2>/dev/null || echo 'N/A')" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check for secondary region outputs
+          SECONDARY_WEBAPP=$(azd env get-value AZURE_WEBAPP_NAME_SECONDARY 2>/dev/null || echo "")
+          if [ -n "$SECONDARY_WEBAPP" ]; then
+            echo "**For \`production-secondary\` environment:**" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "AZURE_WEBAPP_NAME_SECONDARY=$SECONDARY_WEBAPP" >> $GITHUB_STEP_SUMMARY
+            echo "AZURE_AI_PROJECT_ENDPOINT_SECONDARY=$(azd env get-value AZURE_AI_PROJECT_ENDPOINT_SECONDARY 2>/dev/null || echo 'N/A')" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "---" >> $GITHUB_STEP_SUMMARY
           echo "✅ Infrastructure provisioned successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Copy the values above to GitHub Settings → Environments" >> $GITHUB_STEP_SUMMARY
+          echo "2. Run the **Deploy to Azure App Service** workflow" >> $GITHUB_STEP_SUMMARY
 
   deploy:
     name: Deploy Application
