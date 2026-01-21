@@ -161,6 +161,25 @@ jobs:
           
           echo "⚠️ Health check did not return 200, but continuing..."
 
+      - name: Checkout code (for scripts)
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install azure-identity azure-ai-projects
+
+      - name: Configure agents
+        run: |
+          echo "Configuring agents from agents.config.json..."
+          python scripts/postprovision_create_agents.py
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT_PRIMARY }}
+
   deploy-secondary:
     name: Deploy to Secondary Region
     needs: build
@@ -214,6 +233,25 @@ jobs:
           done
           
           echo "⚠️ Health check did not return 200, but continuing..."
+
+      - name: Checkout code (for scripts)
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install azure-identity azure-ai-projects
+
+      - name: Configure agents
+        run: |
+          echo "Configuring agents from agents.config.json..."
+          python scripts/postprovision_create_agents.py
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT_SECONDARY }}
 
   summary:
     name: Deployment Summary
