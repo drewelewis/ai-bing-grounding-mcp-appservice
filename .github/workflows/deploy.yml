@@ -49,6 +49,11 @@ on:
         default: true
         type: boolean
 
+# Required for OIDC authentication with Azure
+permissions:
+  id-token: write
+  contents: read
+
 env:
   PYTHON_VERSION: '3.11'
 
