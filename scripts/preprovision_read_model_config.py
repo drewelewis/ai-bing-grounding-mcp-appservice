@@ -33,18 +33,17 @@ def read_config_json():
         config = {}
         models = data.get('models', {})
         
-        # Map model names to env var format
+        # Map config keys to env var format (keys match route names: gpt4o, gpt41mini, etc.)
         model_mapping = {
-            'gpt-4o': 'AGENT_POOL_SIZE_GPT4O',
-            'gpt-4.1-mini': 'AGENT_POOL_SIZE_GPT41_MINI',
-            'gpt-4': 'AGENT_POOL_SIZE_GPT4',
-            'gpt-35-turbo': 'AGENT_POOL_SIZE_GPT35_TURBO',
-            'gpt-3.5-turbo': 'AGENT_POOL_SIZE_GPT35_TURBO',
+            'gpt4o': 'AGENT_POOL_SIZE_GPT4O',
+            'gpt41mini': 'AGENT_POOL_SIZE_GPT41_MINI',
+            'gpt4': 'AGENT_POOL_SIZE_GPT4',
+            'gpt35turbo': 'AGENT_POOL_SIZE_GPT35_TURBO',
         }
         
-        for model_name, settings in models.items():
+        for model_key, settings in models.items():
             if settings.get('enabled', False):
-                env_key = model_mapping.get(model_name)
+                env_key = model_mapping.get(model_key)
                 if env_key:
                     config[env_key] = settings.get('agentPoolSize', 0)
         
