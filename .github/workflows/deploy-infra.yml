@@ -239,6 +239,86 @@ jobs:
             azd env set BING_GROUNDING_RESOURCE_ID_SECONDARY "$SECONDARY_BING_ID"
           fi
 
+      - name: Configure service principal permissions
+        run: |
+          echo "Configuring service principal permissions for AI Foundry and Agents API..."
+          
+          ENV_NAME="${{ needs.validate.outputs.environment_name }}"
+          PRIMARY_RG="rg-bing-grounding-mcp-${ENV_NAME}"
+          SECONDARY_RG="rg-bing-grounding-mcp-${ENV_NAME}-secondary"
+          
+          # Get the service principal object ID (required for role assignments)
+          SP_OBJECT_ID=$(az ad sp show --id "${{ secrets.AZURE_CLIENT_ID }}" --query id -o tsv)
+          echo "Service Principal Object ID: $SP_OBJECT_ID"
+          
+          # Function to assign roles to a resource
+          assign_roles() {
+            local RESOURCE_ID="$1"
+            local RESOURCE_NAME="$2"
+            
+            if [ -z "$RESOURCE_ID" ]; then
+              echo "⚠️ No resource ID provided for $RESOURCE_NAME, skipping..."
+              return
+            fi
+            
+            echo "Assigning roles to $RESOURCE_NAME..."
+            
+            # Azure AI Developer - Required for Agents API (data plane)
+            # Includes: agents/read, agents/write, threads/*, messages/*, runs/*
+            az role assignment create \
+              --role "Azure AI Developer" \
+              --assignee-object-id "$SP_OBJECT_ID" \
+              --assignee-principal-type ServicePrincipal \
+              --scope "$RESOURCE_ID" \
+              2>/dev/null && echo "  ✅ Azure AI Developer assigned" || echo "  ℹ️ Azure AI Developer may already be assigned"
+            
+            # Cognitive Services User - Required for model deployments
+            az role assignment create \
+              --role "Cognitive Services User" \
+              --assignee-object-id "$SP_OBJECT_ID" \
+              --assignee-principal-type ServicePrincipal \
+              --scope "$RESOURCE_ID" \
+              2>/dev/null && echo "  ✅ Cognitive Services User assigned" || echo "  ℹ️ Cognitive Services User may already be assigned"
+          }
+          
+          # === Primary Region ===
+          echo ""
+          echo "=== Primary Region: $PRIMARY_RG ==="
+          
+          # AI Foundry (AI Services account)
+          PRIMARY_FOUNDRY_ID=$(az cognitiveservices account list --resource-group "$PRIMARY_RG" --query "[?kind=='AIServices'].id | [0]" -o tsv 2>/dev/null || echo "")
+          if [ -n "$PRIMARY_FOUNDRY_ID" ]; then
+            assign_roles "$PRIMARY_FOUNDRY_ID" "Primary AI Foundry"
+          fi
+          
+          # AI Project (child resource of AI Services)
+          PRIMARY_PROJECT_ID=$(az resource list --resource-group "$PRIMARY_RG" --resource-type "Microsoft.CognitiveServices/accounts/projects" --query "[0].id" -o tsv 2>/dev/null || echo "")
+          if [ -n "$PRIMARY_PROJECT_ID" ]; then
+            assign_roles "$PRIMARY_PROJECT_ID" "Primary AI Project"
+          fi
+          
+          # === Secondary Region (if configured) ===
+          if [ -n "${{ vars.AZURE_LOCATION_SECONDARY }}" ]; then
+            echo ""
+            echo "=== Secondary Region: $SECONDARY_RG ==="
+            
+            # AI Foundry
+            SECONDARY_FOUNDRY_ID=$(az cognitiveservices account list --resource-group "$SECONDARY_RG" --query "[?kind=='AIServices'].id | [0]" -o tsv 2>/dev/null || echo "")
+            if [ -n "$SECONDARY_FOUNDRY_ID" ]; then
+              assign_roles "$SECONDARY_FOUNDRY_ID" "Secondary AI Foundry"
+            fi
+            
+            # AI Project
+            SECONDARY_PROJECT_ID=$(az resource list --resource-group "$SECONDARY_RG" --resource-type "Microsoft.CognitiveServices/accounts/projects" --query "[0].id" -o tsv 2>/dev/null || echo "")
+            if [ -n "$SECONDARY_PROJECT_ID" ]; then
+              assign_roles "$SECONDARY_PROJECT_ID" "Secondary AI Project"
+            fi
+          fi
+          
+          echo ""
+          echo "✅ Service principal permissions configured"
+          echo "Note: Role assignments may take 1-2 minutes to propagate"
+
       - name: Run post-provision hooks
         if: github.event.inputs.skip_hooks != 'true'
         run: |

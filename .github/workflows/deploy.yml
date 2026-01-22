@@ -189,42 +189,8 @@ jobs:
       - name: Install dependencies
         run: pip install azure-identity azure-ai-projects
 
-      - name: Ensure Service Principal has AI Developer role
-        run: |
-          ENV_NAME="prod"
-          RG="rg-bing-grounding-mcp-${ENV_NAME}"
-          
-          # Get the AI Foundry resource ID
-          FOUNDRY_ID=$(az cognitiveservices account list --resource-group "$RG" --query "[?kind=='AIServices'].id | [0]" -o tsv)
-          echo "AI Foundry Resource ID: $FOUNDRY_ID"
-          
-          # Get the service principal object ID (not client ID)
-          SP_OBJECT_ID=$(az ad sp show --id "${{ secrets.AZURE_CLIENT_ID }}" --query id -o tsv)
-          echo "Service Principal Object ID: $SP_OBJECT_ID"
-          
-          # Assign Azure AI Developer role (includes agents/read and agents/write permissions)
-          echo "Assigning Azure AI Developer role..."
-          az role assignment create \
-            --role "Azure AI Developer" \
-            --assignee-object-id "$SP_OBJECT_ID" \
-            --assignee-principal-type ServicePrincipal \
-            --scope "$FOUNDRY_ID" \
-            2>/dev/null || echo "Role may already be assigned or assignment in progress"
-          
-          # Also assign to the project if it exists as a separate resource
-          PROJECT_ID=$(az resource list --resource-group "$RG" --resource-type "Microsoft.CognitiveServices/accounts/projects" --query "[0].id" -o tsv 2>/dev/null || echo "")
-          if [ -n "$PROJECT_ID" ]; then
-            echo "Assigning role to project: $PROJECT_ID"
-            az role assignment create \
-              --role "Azure AI Developer" \
-              --assignee-object-id "$SP_OBJECT_ID" \
-              --assignee-principal-type ServicePrincipal \
-              --scope "$PROJECT_ID" \
-              2>/dev/null || echo "Role may already be assigned"
-          fi
-          
-          echo "✅ Role assignment complete. Waiting for propagation..."
-          sleep 30
+      # Note: Service principal role assignments are handled in deploy-infra.yml
+      # The Azure AI Developer role is required for Agents API access
 
       - name: Get Azure Resource Details
         id: resources
@@ -348,47 +314,7 @@ jobs:
       - name: Install dependencies
         run: pip install azure-identity azure-ai-projects
 
-      - name: Ensure Service Principal has AI Developer role
-        run: |
-          ENV_NAME="prod"
-          RG="rg-bing-grounding-mcp-${ENV_NAME}-secondary"
-          
-          # Get the AI Foundry resource ID
-          FOUNDRY_ID=$(az cognitiveservices account list --resource-group "$RG" --query "[?kind=='AIServices'].id | [0]" -o tsv 2>/dev/null || echo "")
-          
-          if [ -n "$FOUNDRY_ID" ]; then
-            echo "AI Foundry Resource ID: $FOUNDRY_ID"
-            
-            # Get the service principal object ID
-            SP_OBJECT_ID=$(az ad sp show --id "${{ secrets.AZURE_CLIENT_ID }}" --query id -o tsv)
-            echo "Service Principal Object ID: $SP_OBJECT_ID"
-            
-            # Assign Azure AI Developer role
-            echo "Assigning Azure AI Developer role..."
-            az role assignment create \
-              --role "Azure AI Developer" \
-              --assignee-object-id "$SP_OBJECT_ID" \
-              --assignee-principal-type ServicePrincipal \
-              --scope "$FOUNDRY_ID" \
-              2>/dev/null || echo "Role may already be assigned"
-            
-            # Also assign to the project
-            PROJECT_ID=$(az resource list --resource-group "$RG" --resource-type "Microsoft.CognitiveServices/accounts/projects" --query "[0].id" -o tsv 2>/dev/null || echo "")
-            if [ -n "$PROJECT_ID" ]; then
-              echo "Assigning role to project: $PROJECT_ID"
-              az role assignment create \
-                --role "Azure AI Developer" \
-                --assignee-object-id "$SP_OBJECT_ID" \
-                --assignee-principal-type ServicePrincipal \
-                --scope "$PROJECT_ID" \
-                2>/dev/null || echo "Role may already be assigned"
-            fi
-            
-            echo "✅ Role assignment complete. Waiting for propagation..."
-            sleep 30
-          else
-            echo "⚠️ No AI Foundry found in secondary region"
-          fi
+      # Note: Service principal role assignments are handled in deploy-infra.yml
 
       - name: Get Azure Resource Details
         id: resources
