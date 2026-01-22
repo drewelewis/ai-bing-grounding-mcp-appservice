@@ -242,20 +242,27 @@ def main():
                 foundry_name = match.group(1)
                 print(f"📍 Extracted foundry name from endpoint: {foundry_name}")
         
-        if is_ci_mode or project_endpoint.endswith('.cognitiveservices.azure.com/'):
-            # Use the AI Services endpoint directly for cognitiveservices format
-            # Strip trailing slash if present
-            api_endpoint = project_endpoint.rstrip('/')
-            print(f"📍 Using AI Services endpoint: {api_endpoint}")
-        else:
-            if foundry_name and project_name:
-                # Format: https://{foundry}.services.ai.azure.com/api/projects/{project}
-                api_endpoint = f"https://{foundry_name}.services.ai.azure.com/api/projects/{project_name}"
-                print(f"📍 Using constructed project endpoint: {api_endpoint}")
+        # For Azure AI Foundry with cognitiveservices.azure.com endpoints,
+        # the AIProjectClient needs the project context in the endpoint
+        if project_endpoint.endswith('.cognitiveservices.azure.com/') or '.cognitiveservices.azure.com' in project_endpoint:
+            # For cognitiveservices endpoints, we need to append the project path
+            # Format: https://{account}.cognitiveservices.azure.com/api/projects/{project}
+            base_endpoint = project_endpoint.rstrip('/')
+            if project_name:
+                api_endpoint = f"{base_endpoint}/api/projects/{project_name}"
+                print(f"📍 Using project-scoped endpoint: {api_endpoint}")
             else:
-                # Fall back to using the endpoint as-is
-                api_endpoint = project_endpoint.rstrip('/')
-                print(f"📍 Using provided endpoint: {api_endpoint}")
+                # Fall back to base endpoint (may fail for agents)
+                api_endpoint = base_endpoint
+                print(f"📍 Using AI Services endpoint (no project): {api_endpoint}")
+        elif foundry_name and project_name:
+            # Format: https://{foundry}.services.ai.azure.com/api/projects/{project}
+            api_endpoint = f"https://{foundry_name}.services.ai.azure.com/api/projects/{project_name}"
+            print(f"📍 Using constructed project endpoint: {api_endpoint}")
+        else:
+            # Fall back to using the endpoint as-is
+            api_endpoint = project_endpoint.rstrip('/')
+            print(f"📍 Using provided endpoint: {api_endpoint}")
         
         print()
         
