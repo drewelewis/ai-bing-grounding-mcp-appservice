@@ -205,9 +205,8 @@ jobs:
               --resource-group "$PRIMARY_RG" \
               --name "$BING_NAME_PRIMARY" \
               --resource-type "Microsoft.Bing/accounts" \
-              --location "global" \
-              --kind "Bing.Grounding" \
-              --properties '{}'
+              --is-full-object \
+              --properties '{"kind": "Bing.Grounding", "location": "global", "sku": {"name": "G1"}, "properties": {}}'
             echo "✅ Created Bing resource: $BING_NAME_PRIMARY"
           fi
           
@@ -229,9 +228,8 @@ jobs:
                 --resource-group "$SECONDARY_RG" \
                 --name "$BING_NAME_SECONDARY" \
                 --resource-type "Microsoft.Bing/accounts" \
-                --location "global" \
-                --kind "Bing.Grounding" \
-                --properties '{}'
+                --is-full-object \
+                --properties '{"kind": "Bing.Grounding", "location": "global", "sku": {"name": "G1"}, "properties": {}}'
               echo "✅ Created Bing resource: $BING_NAME_SECONDARY"
             fi
             
