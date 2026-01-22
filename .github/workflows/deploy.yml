@@ -127,6 +127,23 @@ jobs:
       - name: Unzip artifact
         run: unzip deploy.zip -d ./app
 
+      - name: Debug secrets
+        run: |
+          echo "=== Debugging OIDC Configuration ==="
+          echo "Client ID length: ${#CLIENT_ID}"
+          echo "Client ID starts with: ${CLIENT_ID:0:8}"
+          echo "Tenant ID length: ${#TENANT_ID}"
+          echo "Subscription ID length: ${#SUB_ID}"
+          if [ -z "$CLIENT_ID" ]; then
+            echo "❌ ERROR: AZURE_CLIENT_ID is empty or not set!"
+          else
+            echo "✅ AZURE_CLIENT_ID is set"
+          fi
+        env:
+          CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          SUB_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
