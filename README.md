@@ -509,11 +509,19 @@ az role assignment create \
   --assignee <AZURE_CLIENT_ID> \
   --role "Role Based Access Control Administrator" \
   --scope /subscriptions/<AZURE_SUBSCRIPTION_ID>
+
+# Grant Azure AI Developer (required to create AI agents in Foundry)
+az role assignment create \
+  --assignee <AZURE_CLIENT_ID> \
+  --role "Azure AI Developer" \
+  --scope /subscriptions/<AZURE_SUBSCRIPTION_ID>
 ```
 
 > **📝 Note:** The `appId` returned from `az ad app create` is your `AZURE_CLIENT_ID`. Save it!
 > 
-> **⚠️ Important:** The "Role Based Access Control Administrator" role is required because the deployment creates role assignments to grant App Service managed identities access to AI Foundry projects.
+> **⚠️ Important:** The additional roles are required because:
+> - **Role Based Access Control Administrator** - Creates role assignments for App Service managed identities to access AI Foundry
+> - **Azure AI Developer** - Creates AI agents in AI Foundry projects
 
 #### Step 2: Add Federated Credentials for GitHub OIDC
 
