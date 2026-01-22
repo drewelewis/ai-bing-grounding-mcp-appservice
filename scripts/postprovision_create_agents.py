@@ -229,16 +229,25 @@ def main():
         # CI/CD: Use the endpoint directly (cognitiveservices.azure.com format)
         # Local: Construct from foundry_name and project_name (services.ai.azure.com format)
         
+        # Always get foundry_name and project_name (needed for connection ID construction later)
+        foundry_name = get_env_value("AZURE_FOUNDRY_NAME")
+        project_name = get_env_value("AZURE_AI_PROJECT_NAME")
+        
+        # In CI mode, try to extract from the endpoint URL if not explicitly set
+        if not foundry_name and project_endpoint:
+            # Extract from endpoint like: https://ai-foundry-52hltr3kdvkvo.cognitiveservices.azure.com/
+            import re
+            match = re.search(r'https://([^.]+)\.cognitiveservices\.azure\.com', project_endpoint)
+            if match:
+                foundry_name = match.group(1)
+                print(f"📍 Extracted foundry name from endpoint: {foundry_name}")
+        
         if is_ci_mode or project_endpoint.endswith('.cognitiveservices.azure.com/'):
             # Use the AI Services endpoint directly for cognitiveservices format
             # Strip trailing slash if present
             api_endpoint = project_endpoint.rstrip('/')
             print(f"📍 Using AI Services endpoint: {api_endpoint}")
         else:
-            # Try to construct from foundry_name and project_name
-            foundry_name = get_env_value("AZURE_FOUNDRY_NAME")
-            project_name = get_env_value("AZURE_AI_PROJECT_NAME")
-            
             if foundry_name and project_name:
                 # Format: https://{foundry}.services.ai.azure.com/api/projects/{project}
                 api_endpoint = f"https://{foundry_name}.services.ai.azure.com/api/projects/{project_name}"
@@ -308,6 +317,21 @@ def main():
                         print("[ERROR] BING_GROUNDING_RESOURCE_ID not found!")
                         print("  This should have been set during preprovision.")
                         print("  Run 'azd up' again to select a Bing resource.")
+                        return 1
+                    
+                    # Validate foundry_name and project_name are available
+                    if not foundry_name:
+                        print()
+                        print()
+                        print("[ERROR] AZURE_FOUNDRY_NAME not found and could not be extracted from endpoint!")
+                        print("  Please ensure AZURE_FOUNDRY_NAME is set in your environment.")
+                        return 1
+                    
+                    if not project_name:
+                        print()
+                        print()
+                        print("[ERROR] AZURE_AI_PROJECT_NAME not found!")
+                        print("  Please ensure AZURE_AI_PROJECT_NAME is set in your environment.")
                         return 1
                     
                     # Construct connection ID: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.CognitiveServices/accounts/{foundry}/projects/{project}/connections/default-bing

@@ -189,13 +189,14 @@ jobs:
       - name: Install dependencies
         run: pip install azure-identity azure-ai-projects
 
-      - name: Get Bing Grounding Resource ID
-        id: bing
+      - name: Get Azure Resource Details
+        id: resources
         run: |
           ENV_NAME="prod"
           RG="rg-bing-grounding-mcp-${ENV_NAME}"
           BING_NAME="bing-grounding-${ENV_NAME}"
           
+          # Get Bing resource ID
           echo "Looking up Bing resource: $BING_NAME in $RG"
           BING_ID=$(az resource show --resource-group "$RG" --name "$BING_NAME" --resource-type "Microsoft.Bing/accounts" --query id -o tsv 2>/dev/null || echo "")
           
@@ -204,7 +205,33 @@ jobs:
           else
             echo "✅ Found Bing resource: $BING_ID"
           fi
+          
+          # Get AI Foundry (AI Services account) name
+          FOUNDRY_NAME=$(az cognitiveservices account list --resource-group "$RG" --query "[?kind=='AIServices'].name | [0]" -o tsv 2>/dev/null || echo "")
+          echo "✅ Found AI Foundry: $FOUNDRY_NAME"
+          
+          # Get Project name from AI Foundry
+          # The project is a child resource of the AI Services account
+          PROJECT_NAME=$(az resource list --resource-group "$RG" --resource-type "Microsoft.CognitiveServices/accounts/projects" --query "[0].name" -o tsv 2>/dev/null | cut -d'/' -f2 || echo "")
+          
+          if [ -z "$PROJECT_NAME" ]; then
+            # Try alternative: list projects under the foundry
+            PROJECT_NAME=$(az cognitiveservices account list --resource-group "$RG" --query "[?kind=='AIServices'].name | [0]" -o tsv 2>/dev/null || echo "")
+            # Default project name pattern
+            PROJECT_NAME="${PROJECT_NAME}-project"
+          fi
+          echo "✅ Found Project: $PROJECT_NAME"
+          
+          # Construct Bing Connection ID
+          SUB_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          BING_CONNECTION_ID="/subscriptions/${SUB_ID}/resourceGroups/${RG}/providers/Microsoft.CognitiveServices/accounts/${FOUNDRY_NAME}/projects/${PROJECT_NAME}/connections/default-bing"
+          echo "✅ Bing Connection ID: $BING_CONNECTION_ID"
+          
+          # Output all values
           echo "bing_id=$BING_ID" >> $GITHUB_OUTPUT
+          echo "foundry_name=$FOUNDRY_NAME" >> $GITHUB_OUTPUT
+          echo "project_name=$PROJECT_NAME" >> $GITHUB_OUTPUT
+          echo "bing_connection_id=$BING_CONNECTION_ID" >> $GITHUB_OUTPUT
 
       - name: Configure agents
         run: |
@@ -213,7 +240,10 @@ jobs:
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT_PRIMARY }}
-          BING_GROUNDING_RESOURCE_ID: ${{ steps.bing.outputs.bing_id }}
+          BING_GROUNDING_RESOURCE_ID: ${{ steps.resources.outputs.bing_id }}
+          AZURE_FOUNDRY_NAME: ${{ steps.resources.outputs.foundry_name }}
+          AZURE_AI_PROJECT_NAME: ${{ steps.resources.outputs.project_name }}
+          AZURE_BING_CONNECTION_ID: ${{ steps.resources.outputs.bing_connection_id }}
           AZURE_RESOURCE_GROUP: rg-bing-grounding-mcp-prod
 
   deploy-secondary:
@@ -281,13 +311,14 @@ jobs:
       - name: Install dependencies
         run: pip install azure-identity azure-ai-projects
 
-      - name: Get Bing Grounding Resource ID
-        id: bing
+      - name: Get Azure Resource Details
+        id: resources
         run: |
           ENV_NAME="prod"
           RG="rg-bing-grounding-mcp-${ENV_NAME}-secondary"
           BING_NAME="bing-grounding-${ENV_NAME}-secondary"
           
+          # Get Bing resource ID
           echo "Looking up Bing resource: $BING_NAME in $RG"
           BING_ID=$(az resource show --resource-group "$RG" --name "$BING_NAME" --resource-type "Microsoft.Bing/accounts" --query id -o tsv 2>/dev/null || echo "")
           
@@ -296,7 +327,29 @@ jobs:
           else
             echo "✅ Found Bing resource: $BING_ID"
           fi
+          
+          # Get AI Foundry (AI Services account) name
+          FOUNDRY_NAME=$(az cognitiveservices account list --resource-group "$RG" --query "[?kind=='AIServices'].name | [0]" -o tsv 2>/dev/null || echo "")
+          echo "✅ Found AI Foundry: $FOUNDRY_NAME"
+          
+          # Get Project name from AI Foundry
+          PROJECT_NAME=$(az resource list --resource-group "$RG" --resource-type "Microsoft.CognitiveServices/accounts/projects" --query "[0].name" -o tsv 2>/dev/null | cut -d'/' -f2 || echo "")
+          
+          if [ -z "$PROJECT_NAME" ]; then
+            PROJECT_NAME="${FOUNDRY_NAME}-project"
+          fi
+          echo "✅ Found Project: $PROJECT_NAME"
+          
+          # Construct Bing Connection ID
+          SUB_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          BING_CONNECTION_ID="/subscriptions/${SUB_ID}/resourceGroups/${RG}/providers/Microsoft.CognitiveServices/accounts/${FOUNDRY_NAME}/projects/${PROJECT_NAME}/connections/default-bing"
+          echo "✅ Bing Connection ID: $BING_CONNECTION_ID"
+          
+          # Output all values
           echo "bing_id=$BING_ID" >> $GITHUB_OUTPUT
+          echo "foundry_name=$FOUNDRY_NAME" >> $GITHUB_OUTPUT
+          echo "project_name=$PROJECT_NAME" >> $GITHUB_OUTPUT
+          echo "bing_connection_id=$BING_CONNECTION_ID" >> $GITHUB_OUTPUT
 
       - name: Configure agents
         run: |
@@ -305,7 +358,10 @@ jobs:
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT_SECONDARY }}
-          BING_GROUNDING_RESOURCE_ID: ${{ steps.bing.outputs.bing_id }}
+          BING_GROUNDING_RESOURCE_ID: ${{ steps.resources.outputs.bing_id }}
+          AZURE_FOUNDRY_NAME: ${{ steps.resources.outputs.foundry_name }}
+          AZURE_AI_PROJECT_NAME: ${{ steps.resources.outputs.project_name }}
+          AZURE_BING_CONNECTION_ID: ${{ steps.resources.outputs.bing_connection_id }}
           AZURE_RESOURCE_GROUP: rg-bing-grounding-mcp-prod-secondary
 
   summary:
