@@ -18,12 +18,12 @@ hooks:
   postprovision:
     windows:
       shell: pwsh
-      run: python scripts/postprovision_deploy_models.py ; python scripts/postprovision_deploy_bing_connection.py ; python scripts/postprovision_create_agents.py
+      run: python scripts/postprovision_deploy_models.py ; python scripts/postprovision_deploy_bing_connection.py
       continueOnError: false
       interactive: false
     posix:
       shell: sh
-      run: python scripts/postprovision_deploy_models.py && python scripts/postprovision_deploy_bing_connection.py && python scripts/postprovision_create_agents.py
+      run: python scripts/postprovision_deploy_models.py && python scripts/postprovision_deploy_bing_connection.py
       continueOnError: false
       interactive: false
 
