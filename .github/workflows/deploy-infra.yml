@@ -184,6 +184,63 @@ jobs:
           AZURE_LOCATION: ${{ vars.AZURE_LOCATION_PRIMARY }}
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Create Bing Grounding resources
+        run: |
+          echo "Creating Bing Grounding resources for each region..."
+          
+          ENV_NAME="${{ needs.validate.outputs.environment_name }}"
+          PRIMARY_RG="rg-bing-grounding-mcp-${ENV_NAME}"
+          SECONDARY_RG="rg-bing-grounding-mcp-${ENV_NAME}-secondary"
+          
+          # Create Bing Grounding for primary region
+          echo "Creating Bing Grounding for primary region..."
+          BING_NAME_PRIMARY="bing-grounding-${ENV_NAME}"
+          
+          # Check if already exists
+          if az resource show --resource-group "$PRIMARY_RG" --name "$BING_NAME_PRIMARY" --resource-type "Microsoft.Bing/accounts" &>/dev/null; then
+            echo "✅ Bing resource already exists in primary region: $BING_NAME_PRIMARY"
+          else
+            echo "Creating Bing resource in primary region..."
+            az resource create \
+              --resource-group "$PRIMARY_RG" \
+              --name "$BING_NAME_PRIMARY" \
+              --resource-type "Microsoft.Bing/accounts" \
+              --location global \
+              --properties '{"kind": "Bing.Grounding"}' \
+              --is-full-object
+            echo "✅ Created Bing resource: $BING_NAME_PRIMARY"
+          fi
+          
+          # Get primary Bing resource ID
+          PRIMARY_BING_ID=$(az resource show --resource-group "$PRIMARY_RG" --name "$BING_NAME_PRIMARY" --resource-type "Microsoft.Bing/accounts" --query id -o tsv)
+          echo "Primary Bing Resource ID: $PRIMARY_BING_ID"
+          azd env set BING_GROUNDING_RESOURCE_ID "$PRIMARY_BING_ID"
+          
+          # Create Bing Grounding for secondary region if configured
+          if [ -n "${{ vars.AZURE_LOCATION_SECONDARY }}" ]; then
+            echo "Creating Bing Grounding for secondary region..."
+            BING_NAME_SECONDARY="bing-grounding-${ENV_NAME}-secondary"
+            
+            if az resource show --resource-group "$SECONDARY_RG" --name "$BING_NAME_SECONDARY" --resource-type "Microsoft.Bing/accounts" &>/dev/null; then
+              echo "✅ Bing resource already exists in secondary region: $BING_NAME_SECONDARY"
+            else
+              echo "Creating Bing resource in secondary region..."
+              az resource create \
+                --resource-group "$SECONDARY_RG" \
+                --name "$BING_NAME_SECONDARY" \
+                --resource-type "Microsoft.Bing/accounts" \
+                --location global \
+                --properties '{"kind": "Bing.Grounding"}' \
+                --is-full-object
+              echo "✅ Created Bing resource: $BING_NAME_SECONDARY"
+            fi
+            
+            # Get secondary Bing resource ID
+            SECONDARY_BING_ID=$(az resource show --resource-group "$SECONDARY_RG" --name "$BING_NAME_SECONDARY" --resource-type "Microsoft.Bing/accounts" --query id -o tsv)
+            echo "Secondary Bing Resource ID: $SECONDARY_BING_ID"
+            azd env set BING_GROUNDING_RESOURCE_ID_SECONDARY "$SECONDARY_BING_ID"
+          fi
+
       - name: Run post-provision hooks
         if: github.event.inputs.skip_hooks != 'true'
         run: |
@@ -218,18 +275,23 @@ jobs:
           PRIMARY_WEBAPP=$(az webapp list --resource-group $PRIMARY_RG --query "[0].name" -o tsv 2>/dev/null || echo "")
           PRIMARY_FOUNDRY=$(az cognitiveservices account list --resource-group $PRIMARY_RG --query "[?kind=='AIServices'].name | [0]" -o tsv 2>/dev/null || echo "")
           PRIMARY_ENDPOINT=$(az cognitiveservices account list --resource-group $PRIMARY_RG --query "[?kind=='AIServices'].properties.endpoint | [0]" -o tsv 2>/dev/null || echo "")
+          PRIMARY_BING=$(az resource list --resource-group $PRIMARY_RG --resource-type "Microsoft.Bing/accounts" --query "[0].name" -o tsv 2>/dev/null || echo "")
+          PRIMARY_BING_ID=$(az resource list --resource-group $PRIMARY_RG --resource-type "Microsoft.Bing/accounts" --query "[0].id" -o tsv 2>/dev/null || echo "")
           
           echo "| Resource | Name |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|------|" >> $GITHUB_STEP_SUMMARY
           echo "| Resource Group | $PRIMARY_RG |" >> $GITHUB_STEP_SUMMARY
           echo "| Web App | $PRIMARY_WEBAPP |" >> $GITHUB_STEP_SUMMARY
           echo "| AI Foundry | $PRIMARY_FOUNDRY |" >> $GITHUB_STEP_SUMMARY
+          echo "| Bing Grounding | $PRIMARY_BING |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # Secondary region resources (if exists)
           SECONDARY_WEBAPP=$(az webapp list --resource-group $SECONDARY_RG --query "[0].name" -o tsv 2>/dev/null || echo "")
           SECONDARY_FOUNDRY=$(az cognitiveservices account list --resource-group $SECONDARY_RG --query "[?kind=='AIServices'].name | [0]" -o tsv 2>/dev/null || echo "")
           SECONDARY_ENDPOINT=$(az cognitiveservices account list --resource-group $SECONDARY_RG --query "[?kind=='AIServices'].properties.endpoint | [0]" -o tsv 2>/dev/null || echo "")
+          SECONDARY_BING=$(az resource list --resource-group $SECONDARY_RG --resource-type "Microsoft.Bing/accounts" --query "[0].name" -o tsv 2>/dev/null || echo "")
+          SECONDARY_BING_ID=$(az resource list --resource-group $SECONDARY_RG --resource-type "Microsoft.Bing/accounts" --query "[0].id" -o tsv 2>/dev/null || echo "")
           
           if [ -n "$SECONDARY_WEBAPP" ]; then
             echo "### 📋 Secondary Region Resources" >> $GITHUB_STEP_SUMMARY
@@ -238,6 +300,7 @@ jobs:
             echo "| Resource Group | $SECONDARY_RG |" >> $GITHUB_STEP_SUMMARY
             echo "| Web App | $SECONDARY_WEBAPP |" >> $GITHUB_STEP_SUMMARY
             echo "| AI Foundry | $SECONDARY_FOUNDRY |" >> $GITHUB_STEP_SUMMARY
+            echo "| Bing Grounding | $SECONDARY_BING |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
           
@@ -254,6 +317,7 @@ jobs:
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| \`AZURE_WEBAPP_NAME_PRIMARY\` | \`$PRIMARY_WEBAPP\` |" >> $GITHUB_STEP_SUMMARY
           echo "| \`AZURE_AI_PROJECT_ENDPOINT_PRIMARY\` | \`$PRIMARY_ENDPOINT\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`BING_GROUNDING_RESOURCE_ID_PRIMARY\` | \`$PRIMARY_BING_ID\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [ -n "$SECONDARY_WEBAPP" ]; then
@@ -263,6 +327,7 @@ jobs:
             echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
             echo "| \`AZURE_WEBAPP_NAME_SECONDARY\` | \`$SECONDARY_WEBAPP\` |" >> $GITHUB_STEP_SUMMARY
             echo "| \`AZURE_AI_PROJECT_ENDPOINT_SECONDARY\` | \`$SECONDARY_ENDPOINT\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| \`BING_GROUNDING_RESOURCE_ID_SECONDARY\` | \`$SECONDARY_BING_ID\` |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
           
