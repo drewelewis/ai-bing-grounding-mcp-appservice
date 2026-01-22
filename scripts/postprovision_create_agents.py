@@ -44,8 +44,16 @@ except ImportError:
 NUM_AGENTS = 10
 
 def get_env_value(key: str) -> str:
-    """Get environment variable value from current azd environment .env file."""
-    # First, determine which environment we're in by checking azd's config
+    """Get environment variable value from OS environment or azd environment .env file.
+    
+    Priority: OS environment variable > .azure/{env}/.env file
+    """
+    # First check OS environment (for CI/CD scenarios)
+    env_value = os.environ.get(key)
+    if env_value:
+        return env_value
+    
+    # Fallback: determine which azd environment we're in by checking azd's config
     env_name = None
     
     # Try to read the default environment from .azure/config.json
@@ -149,25 +157,27 @@ def set_env_value(key: str, value: str):
 
 def main():
     """Create Bing grounding agents."""
-    print("?? Creating Bing Grounding Agent Pools...")
+    print("🤖 Creating Bing Grounding Agent Pools...")
     print()
     
-    # Get AI Project endpoint and resource ID from .azure/{env}/.env file
+    # Check if we're in CI/CD mode (environment variables set directly)
+    is_ci_mode = os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")
+    
+    # Get AI Project endpoint - check OS env first, then .azure/ folder
     project_endpoint = get_env_value("AZURE_AI_PROJECT_ENDPOINT")
-    project_resource_id = get_env_value("AZURE_AI_PROJECT_RESOURCE_ID")
     
     if not project_endpoint:
-        print("? Error: AZURE_AI_PROJECT_ENDPOINT not found in .azure/ folder")
-        print("   Run 'azd provision' first to create the AI Project.")
+        print("❌ Error: AZURE_AI_PROJECT_ENDPOINT not found")
+        print("   In CI/CD: Set AZURE_AI_PROJECT_ENDPOINT environment variable")
+        print("   Locally: Run 'azd provision' first to create the AI Project.")
         sys.exit(1)
     
-    if not project_resource_id:
-        print("? Error: AZURE_AI_PROJECT_RESOURCE_ID not found in .azure/ folder")
-        print("   Run 'azd provision' first to create the AI Project.")
-        sys.exit(1)
+    # For CI/CD, we may not have resource ID - that's OK for agent creation
+    project_resource_id = get_env_value("AZURE_AI_PROJECT_RESOURCE_ID")
+    if not project_resource_id and not is_ci_mode:
+        print("⚠️ Warning: AZURE_AI_PROJECT_RESOURCE_ID not found (optional for agent creation)")
     
     # Bing connection ID - optional for now (connection can be created later)
-    # For beta10 SDK with hub-based projects, Bing tool may work without explicit connection ID
     bing_connection_id = get_env_value("AZURE_BING_CONNECTION_ID")
     
     # Model configurations (ONLY officially supported models for Bing grounding)
@@ -213,22 +223,35 @@ def main():
     
     try:
         # Initialize AI Project client using HTTPS endpoint (for Foundry projects with GA SDK v1.0.0)
-        # For GA SDK, we need to construct the full project endpoint
         credential = DefaultAzureCredential()
         
-        # For GA SDK v1.0.0, use the project-specific AI Foundry API endpoint
-        # Get required parameters for AIProjectClient v1.0.0+
-        foundry_name = get_env_value("AZURE_FOUNDRY_NAME")
-        project_name = get_env_value("AZURE_AI_PROJECT_NAME")
+        # Determine the project endpoint to use
+        # CI/CD: Use the endpoint directly (cognitiveservices.azure.com format)
+        # Local: Construct from foundry_name and project_name (services.ai.azure.com format)
         
-        # Format: https://{foundry}.services.ai.azure.com/api/projects/{project}
-        project_endpoint = f"https://{foundry_name}.services.ai.azure.com/api/projects/{project_name}"
+        if is_ci_mode or project_endpoint.endswith('.cognitiveservices.azure.com/'):
+            # Use the AI Services endpoint directly for cognitiveservices format
+            # Strip trailing slash if present
+            api_endpoint = project_endpoint.rstrip('/')
+            print(f"📍 Using AI Services endpoint: {api_endpoint}")
+        else:
+            # Try to construct from foundry_name and project_name
+            foundry_name = get_env_value("AZURE_FOUNDRY_NAME")
+            project_name = get_env_value("AZURE_AI_PROJECT_NAME")
+            
+            if foundry_name and project_name:
+                # Format: https://{foundry}.services.ai.azure.com/api/projects/{project}
+                api_endpoint = f"https://{foundry_name}.services.ai.azure.com/api/projects/{project_name}"
+                print(f"📍 Using constructed project endpoint: {api_endpoint}")
+            else:
+                # Fall back to using the endpoint as-is
+                api_endpoint = project_endpoint.rstrip('/')
+                print(f"📍 Using provided endpoint: {api_endpoint}")
         
-        print(f"?? Using project endpoint: {project_endpoint}")
         print()
         
         project_client = AIProjectClient(
-            endpoint=project_endpoint,
+            endpoint=api_endpoint,
             credential=credential
         )
         
