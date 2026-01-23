@@ -319,22 +319,35 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'push' || 
-       github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_secondary == 'true') &&
-      vars.AZURE_WEBAPP_NAME_SECONDARY != ''
+      github.event_name == 'push' || 
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_secondary == 'true')
     environment:
       name: production-secondary
       url: https://${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}.azurewebsites.net
     steps:
+      - name: Check secondary region configuration
+        id: check-config
+        run: |
+          if [ -z "${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}" ]; then
+            echo "⚠️ AZURE_WEBAPP_NAME_SECONDARY not configured - skipping secondary deployment"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Secondary region configured: ${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Download artifact
+        if: steps.check-config.outputs.skip != 'true'
         uses: actions/download-artifact@v4
         with:
           name: app-package
 
       - name: Unzip artifact
+        if: steps.check-config.outputs.skip != 'true'
         run: unzip deploy.zip -d ./app
 
       - name: Azure Login (OIDC)
+        if: steps.check-config.outputs.skip != 'true'
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -342,6 +355,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy to Secondary App Service
+        if: steps.check-config.outputs.skip != 'true'
         id: deploy
         uses: azure/webapps-deploy@v3
         with:
@@ -349,6 +363,7 @@ jobs:
           package: ./app
 
       - name: Health check
+        if: steps.check-config.outputs.skip != 'true'
         run: |
           echo "Waiting for deployment to stabilize..."
           sleep 30
@@ -369,19 +384,23 @@ jobs:
           echo "⚠️ Health check did not return 200, but continuing..."
 
       - name: Checkout code (for scripts)
+        if: steps.check-config.outputs.skip != 'true'
         uses: actions/checkout@v4
 
       - name: Set up Python
+        if: steps.check-config.outputs.skip != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Install dependencies
+        if: steps.check-config.outputs.skip != 'true'
         run: pip install azure-identity azure-ai-projects pyyaml
 
       # Note: Service principal role assignments are handled in deploy-infra.yml
 
       - name: Get Azure Resource Details
+        if: steps.check-config.outputs.skip != 'true'
         id: resources
         run: |
           ENV_NAME="prod"
@@ -423,6 +442,7 @@ jobs:
           echo "rg=$RG" >> $GITHUB_OUTPUT
 
       - name: Deploy required models
+        if: steps.check-config.outputs.skip != 'true'
         run: |
           echo "Deploying models from agents.config.yaml..."
           python scripts/postprovision_deploy_models.py
@@ -431,6 +451,7 @@ jobs:
           AZURE_RESOURCE_GROUP: rg-bing-grounding-mcp-prod-secondary
 
       - name: Create Bing Connection in AI Foundry
+        if: steps.check-config.outputs.skip != 'true'
         run: |
           echo "Creating Bing connection in AI Foundry project..."
           RG="${{ steps.resources.outputs.rg }}"
@@ -468,6 +489,7 @@ jobs:
           echo "✅ Bing connection deployment complete"
 
       - name: Configure agents
+        if: steps.check-config.outputs.skip != 'true'
         run: |
           echo "Configuring agents from agents.config.yaml..."
           python scripts/postprovision_create_agents.py
@@ -481,6 +503,7 @@ jobs:
           AZURE_RESOURCE_GROUP: rg-bing-grounding-mcp-prod-secondary
 
       - name: Refresh agents in App Service
+        if: steps.check-config.outputs.skip != 'true'
         run: |
           echo "Triggering agent refresh in App Service..."
           REFRESH_URL="https://${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}.azurewebsites.net/admin/refresh"
