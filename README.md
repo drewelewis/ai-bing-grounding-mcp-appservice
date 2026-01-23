@@ -180,6 +180,156 @@ graph TB
 
 ---
 
+## Agent Configuration & Traffic Splitting
+
+Agents are configured in `agents.config.json`. Each agent is defined individually with its own traffic weight, enabling sophisticated deployment patterns like blue/green and canary releases.
+
+### Configuration File
+
+```json
+{
+  "agents": [
+    {
+      "name": "gpt4o_1",
+      "model": "gpt-4o",
+      "weight": 90,
+      "enabled": true,
+      "instructions": "You are a web search assistant..."
+    },
+    {
+      "name": "gpt4o_2",
+      "model": "gpt-4o",
+      "weight": 10,
+      "enabled": true,
+      "instructions": "You are a web search assistant..."
+    }
+  ],
+  "defaults": {
+    "instructions": "Default prompt if agent doesn't specify one"
+  }
+}
+```
+
+### Configuration Options
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Unique agent identifier (used in API routes) |
+| `model` | string | Azure OpenAI model ID (`gpt-4o`, `gpt-4.1-mini`, etc.) |
+| `weight` | number | Traffic percentage (0-100) for weighted routing |
+| `enabled` | boolean | Whether to create this agent on deployment |
+| `instructions` | string | System prompt for the agent |
+
+### Traffic Splitting Patterns
+
+#### Blue/Green Deployment
+
+Use two agents with 100/0 weights, then swap to cut over:
+
+```json
+{
+  "agents": [
+    { "name": "gpt4o_blue", "model": "gpt-4o", "weight": 100, "enabled": true },
+    { "name": "gpt4o_green", "model": "gpt-4o", "weight": 0, "enabled": true }
+  ]
+}
+```
+
+**Cutover process:**
+1. Deploy new version to "green" agent (weight: 0)
+2. Test green agent directly via its route
+3. Swap weights: blue → 0, green → 100
+4. Call `POST /admin/refresh` to apply changes
+
+#### Canary Release
+
+Route a small percentage of traffic to the new version:
+
+```json
+{
+  "agents": [
+    { "name": "gpt4o_stable", "model": "gpt-4o", "weight": 95, "enabled": true },
+    { "name": "gpt4o_canary", "model": "gpt-4o", "weight": 5, "enabled": true }
+  ]
+}
+```
+
+**Gradual rollout:**
+1. Start with 5% to canary
+2. Monitor for errors/latency
+3. Increase to 25%, 50%, 100%
+4. If issues arise, set canary to 0%
+
+#### A/B Testing Prompts
+
+Test different system prompts with equal traffic:
+
+```json
+{
+  "agents": [
+    { 
+      "name": "gpt4o_prompt_a", 
+      "model": "gpt-4o", 
+      "weight": 50,
+      "instructions": "You are a concise assistant. Keep responses under 100 words."
+    },
+    { 
+      "name": "gpt4o_prompt_b", 
+      "model": "gpt-4o", 
+      "weight": 50,
+      "instructions": "You are a detailed assistant. Provide comprehensive answers."
+    }
+  ]
+}
+```
+
+### Admin API for Weight Management
+
+Update weights at runtime without redeployment:
+
+```bash
+# Update a single agent's weight
+curl -X PUT https://your-app.azurewebsites.net/admin/agents/gpt4o_1/weight \
+  -H "Content-Type: application/json" \
+  -d '{"weight": 50}'
+
+# Refresh agent cache after changes
+curl -X POST https://your-app.azurewebsites.net/admin/refresh
+
+# View all agents with current weights
+curl https://your-app.azurewebsites.net/agents
+```
+
+### How Traffic Routing Works
+
+When a request comes in without specifying an agent:
+
+1. **Filter by model**: If `?model=gpt-4o`, only gpt-4o agents are considered
+2. **Weight selection**: Random selection weighted by each agent's `weight` value
+3. **Example**: With weights 90/10, agent_1 handles ~90% of requests
+
+```
+Request → /bing-grounding?model=gpt-4o
+         ↓
+    ┌─────────────────┐
+    │ Agent Selection │
+    │   gpt4o_1: 90%  │──→ 90% of requests
+    │   gpt4o_2: 10%  │──→ 10% of requests
+    └─────────────────┘
+```
+
+### Deployment Behavior
+
+On each deployment (`azd up` or CI/CD):
+
+1. **Existing agents deleted**: All agents matching `agent_bing_*` pattern are removed
+2. **New agents created**: Fresh agents created from `agents.config.json`
+3. **App refreshed**: `/admin/refresh` called to load new agents
+
+This ensures the deployed state always matches your configuration file.
+
+---
+
 ## Prerequisites
 
 ### For Local Development
