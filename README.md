@@ -186,28 +186,45 @@ Agents are configured in `agents.config.yaml`. Each agent is defined individuall
 
 ### Configuration File
 
-```json
-{
-  "agents": [
-    {
-      "name": "gpt4o_1",
-      "model": "gpt-4o",
-      "weight": 90,
-      "enabled": true,
-      "instructions": "You are a web search assistant..."
-    },
-    {
-      "name": "gpt4o_2",
-      "model": "gpt-4o",
-      "weight": 10,
-      "enabled": true,
-      "instructions": "You are a web search assistant..."
-    }
-  ],
-  "defaults": {
-    "instructions": "Default prompt if agent doesn't specify one"
-  }
-}
+```yaml
+# agents.config.yaml
+models:
+  gpt-4o:
+    enabled: true
+    sku: GlobalStandard
+    capacity: 50                    # Valid range: 1-1000 K TPM
+    version: "2024-11-20"
+    # Supports: Agents ✓, Bing Grounding ✓
+
+agents:
+  - name: gpt4o_1
+    model: gpt-4o
+    weight: 90                      # Gets 90% of gpt-4o traffic
+    enabled: true
+    temperature: 0.7
+    tools:
+      - bing_grounding
+    instructions: |
+      You are a web search assistant. Use Bing Search to find current 
+      information before answering. Include citations for all facts.
+
+  - name: gpt4o_2
+    model: gpt-4o
+    weight: 10                      # Gets 10% of gpt-4o traffic (canary)
+    enabled: true
+    temperature: 0.7
+    tools:
+      - bing_grounding
+    instructions: |
+      You are a web search assistant. Use Bing Search to find current 
+      information before answering. Include citations for all facts.
+
+defaults:
+  temperature: 0.7
+  tools:
+    - bing_grounding
+  instructions: |
+    Default prompt if agent doesn't specify one.
 ```
 
 ### Configuration Options
@@ -218,7 +235,10 @@ Agents are configured in `agents.config.yaml`. Each agent is defined individuall
 | `model` | string | Azure OpenAI model ID (`gpt-4o`, `gpt-4.1-mini`, etc.) |
 | `weight` | number | Traffic percentage (0-100) for weighted routing |
 | `enabled` | boolean | Whether to create this agent on deployment |
-| `instructions` | string | System prompt for the agent |
+| `temperature` | number | Model temperature (0.0-2.0) |
+| `tools` | list | Tools to enable (`bing_grounding`, `code_interpreter`, `file_search`) |
+| `instructions` | string | System prompt for the agent (supports multi-line with `\|`) |
+| `metadata` | object | Custom key-value pairs for tracking |
 
 ### Traffic Splitting Patterns
 
@@ -226,13 +246,19 @@ Agents are configured in `agents.config.yaml`. Each agent is defined individuall
 
 Use two agents with 100/0 weights, then swap to cut over:
 
-```json
-{
-  "agents": [
-    { "name": "gpt4o_blue", "model": "gpt-4o", "weight": 100, "enabled": true },
-    { "name": "gpt4o_green", "model": "gpt-4o", "weight": 0, "enabled": true }
-  ]
-}
+```yaml
+agents:
+  - name: gpt4o_blue
+    model: gpt-4o
+    weight: 100                     # Currently active
+    enabled: true
+    tools: [bing_grounding]
+    
+  - name: gpt4o_green
+    model: gpt-4o
+    weight: 0                       # Standby
+    enabled: true
+    tools: [bing_grounding]
 ```
 
 **Cutover process:**
@@ -245,13 +271,19 @@ Use two agents with 100/0 weights, then swap to cut over:
 
 Route a small percentage of traffic to the new version:
 
-```json
-{
-  "agents": [
-    { "name": "gpt4o_stable", "model": "gpt-4o", "weight": 95, "enabled": true },
-    { "name": "gpt4o_canary", "model": "gpt-4o", "weight": 5, "enabled": true }
-  ]
-}
+```yaml
+agents:
+  - name: gpt4o_stable
+    model: gpt-4o
+    weight: 95                      # Most traffic
+    enabled: true
+    tools: [bing_grounding]
+    
+  - name: gpt4o_canary
+    model: gpt-4o
+    weight: 5                       # Test traffic
+    enabled: true
+    tools: [bing_grounding]
 ```
 
 **Gradual rollout:**
@@ -264,23 +296,23 @@ Route a small percentage of traffic to the new version:
 
 Test different system prompts with equal traffic:
 
-```json
-{
-  "agents": [
-    { 
-      "name": "gpt4o_prompt_a", 
-      "model": "gpt-4o", 
-      "weight": 50,
-      "instructions": "You are a concise assistant. Keep responses under 100 words."
-    },
-    { 
-      "name": "gpt4o_prompt_b", 
-      "model": "gpt-4o", 
-      "weight": 50,
-      "instructions": "You are a detailed assistant. Provide comprehensive answers."
-    }
-  ]
-}
+```yaml
+agents:
+  - name: gpt4o_prompt_a
+    model: gpt-4o
+    weight: 50
+    enabled: true
+    tools: [bing_grounding]
+    instructions: |
+      You are a concise assistant. Keep responses under 100 words.
+
+  - name: gpt4o_prompt_b
+    model: gpt-4o
+    weight: 50
+    enabled: true
+    tools: [bing_grounding]
+    instructions: |
+      You are a detailed assistant. Provide comprehensive answers.
 ```
 
 ### Admin API for Weight Management
@@ -787,13 +819,33 @@ For deployment protection rules, create environments:
 
 Agents are configured via `agents.config.yaml` (checked into repo) and created/updated during app deployment:
 
-```json
-{
-  "models": {
-    "gpt4o": { "enabled": true, "agentPoolSize": 2, "modelId": "gpt-4o" },
-    "gpt41mini": { "enabled": true, "agentPoolSize": 2, "modelId": "gpt-4.1-mini" }
-  }
-}
+```yaml
+# agents.config.yaml - Models auto-deployed based on agent requirements
+models:
+  gpt-4o:
+    enabled: true
+    sku: GlobalStandard
+    capacity: 50                    # K TPM (valid: 1-1000)
+    version: "2024-11-20"
+
+  gpt-4.1-mini:
+    enabled: true
+    sku: GlobalStandard
+    capacity: 50                    # K TPM (valid: 1-2000)
+    version: "2025-04-14"
+
+agents:
+  - name: gpt4o_1
+    model: gpt-4o
+    weight: 90
+    enabled: true
+    tools: [bing_grounding]
+
+  - name: gpt4o_2
+    model: gpt-4o
+    weight: 10
+    enabled: true
+    tools: [bing_grounding]
 ```
 
 **This enables:**
