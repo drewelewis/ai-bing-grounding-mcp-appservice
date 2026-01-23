@@ -33,7 +33,7 @@ resource secondaryBackend 'Microsoft.ApiManagement/service/backends@2022-08-01' 
   }
 }
 
-// Backend Pool with failover
+// Backend Pool - Active/Active round-robin load balancing
 resource backendPool 'Microsoft.ApiManagement/service/backends@2023-09-01-preview' = {
   parent: apim
   name: 'multi-region-pool'
@@ -43,13 +43,13 @@ resource backendPool 'Microsoft.ApiManagement/service/backends@2023-09-01-previe
       services: !empty(secondaryBackendUrl) ? [
         {
           id: primaryBackend.id
-          priority: 1
-          weight: 1
+          priority: 1  // Same priority = active/active
+          weight: 1    // Equal weight = 50/50 distribution
         }
         {
           id: secondaryBackend.id
-          priority: 2
-          weight: 1
+          priority: 1  // Same priority = active/active
+          weight: 1    // Equal weight = 50/50 distribution
         }
       ] : [
         {
@@ -233,6 +233,131 @@ resource agentsOperationPolicy 'Microsoft.ApiManagement/service/apis/operations/
   properties: {
     format: 'xml'
     value: agentsPolicyFinal
+  }
+}
+
+// Health operation policy - aggregate health from all regions
+var singleRegionHealthPolicyXml = '''<policies>
+  <inbound>
+    <base />
+    <send-request mode="new" response-variable-name="primaryResponse" timeout="10" ignore-error="true">
+      <set-url>PRIMARY_URL/health</set-url>
+      <set-method>GET</set-method>
+    </send-request>
+    <return-response>
+      <set-status code="200" reason="OK" />
+      <set-header name="Content-Type" exists-action="override">
+        <value>application/json</value>
+      </set-header>
+      <set-body>@{
+        var primaryBody = ((IResponse)context.Variables["primaryResponse"])?.Body?.As&lt;JObject&gt;();
+        var regions = new JArray();
+        if (primaryBody != null) {
+          var region = primaryBody["region"]?.ToString() ?? "primary";
+          primaryBody["region"] = region;
+          regions.Add(new JObject(
+            new JProperty("region", region),
+            new JProperty("status", primaryBody["status"]?.ToString() ?? "unknown"),
+            new JProperty("agents_loaded", primaryBody["agents_loaded"])
+          ));
+        }
+        return new JObject(
+          new JProperty("status", primaryBody != null ? "healthy" : "unhealthy"),
+          new JProperty("regions", regions),
+          new JProperty("mode", "single-region")
+        ).ToString();
+      }</set-body>
+    </return-response>
+  </inbound>
+  <backend><base /></backend>
+  <outbound><base /></outbound>
+  <on-error><base /></on-error>
+</policies>'''
+
+var multiRegionHealthPolicyXml = '''<policies>
+  <inbound>
+    <base />
+    <send-request mode="new" response-variable-name="primaryResponse" timeout="10" ignore-error="true">
+      <set-url>PRIMARY_URL/health</set-url>
+      <set-method>GET</set-method>
+    </send-request>
+    <send-request mode="new" response-variable-name="secondaryResponse" timeout="10" ignore-error="true">
+      <set-url>SECONDARY_URL/health</set-url>
+      <set-method>GET</set-method>
+    </send-request>
+    <return-response>
+      <set-status code="200" reason="OK" />
+      <set-header name="Content-Type" exists-action="override">
+        <value>application/json</value>
+      </set-header>
+      <set-body>@{
+        var primaryBody = ((IResponse)context.Variables["primaryResponse"])?.Body?.As&lt;JObject&gt;();
+        var secondaryBody = ((IResponse)context.Variables["secondaryResponse"])?.Body?.As&lt;JObject&gt;();
+        
+        var regions = new JArray();
+        int healthyCount = 0;
+        
+        if (primaryBody != null) {
+          var region = primaryBody["region"]?.ToString() ?? "primary";
+          var status = primaryBody["status"]?.ToString() ?? "unknown";
+          regions.Add(new JObject(
+            new JProperty("region", region),
+            new JProperty("status", status),
+            new JProperty("agents_loaded", primaryBody["agents_loaded"])
+          ));
+          if (status == "ok") healthyCount++;
+        } else {
+          regions.Add(new JObject(
+            new JProperty("region", "primary"),
+            new JProperty("status", "unreachable"),
+            new JProperty("agents_loaded", 0)
+          ));
+        }
+        
+        if (secondaryBody != null) {
+          var region = secondaryBody["region"]?.ToString() ?? "secondary";
+          var status = secondaryBody["status"]?.ToString() ?? "unknown";
+          regions.Add(new JObject(
+            new JProperty("region", region),
+            new JProperty("status", status),
+            new JProperty("agents_loaded", secondaryBody["agents_loaded"])
+          ));
+          if (status == "ok") healthyCount++;
+        } else {
+          regions.Add(new JObject(
+            new JProperty("region", "secondary"),
+            new JProperty("status", "unreachable"),
+            new JProperty("agents_loaded", 0)
+          ));
+        }
+        
+        var overallStatus = healthyCount == 2 ? "healthy" : (healthyCount == 1 ? "degraded" : "unhealthy");
+        
+        return new JObject(
+          new JProperty("status", overallStatus),
+          new JProperty("healthy_regions", healthyCount),
+          new JProperty("total_regions", 2),
+          new JProperty("regions", regions),
+          new JProperty("mode", "active-active")
+        ).ToString();
+      }</set-body>
+    </return-response>
+  </inbound>
+  <backend><base /></backend>
+  <outbound><base /></outbound>
+  <on-error><base /></on-error>
+</policies>'''
+
+var healthPolicyTemplate = hasSecondaryRegion ? multiRegionHealthPolicyXml : singleRegionHealthPolicyXml
+var healthPolicyWithPrimary = replace(healthPolicyTemplate, 'PRIMARY_URL', primaryBackendUrl)
+var healthPolicyFinal = hasSecondaryRegion ? replace(healthPolicyWithPrimary, 'SECONDARY_URL', secondaryBackendUrl) : healthPolicyWithPrimary
+
+resource healthOperationPolicy 'Microsoft.ApiManagement/service/apis/operations/policies@2022-08-01' = {
+  parent: healthOperationRest
+  name: 'policy'
+  properties: {
+    format: 'xml'
+    value: healthPolicyFinal
   }
 }
 

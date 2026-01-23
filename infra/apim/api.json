@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "1406839483755143948"
+      "templateHash": "1844518687404344681"
     }
   },
   "parameters": {
@@ -26,7 +26,12 @@
     "hasSecondaryRegion": "[not(empty(parameters('secondaryBackendUrl')))]",
     "agentsPolicyTemplate": "[if(variables('hasSecondaryRegion'), variables('multiRegionPolicyXml'), variables('singleRegionPolicyXml'))]",
     "agentsPolicyWithPrimary": "[replace(variables('agentsPolicyTemplate'), 'PRIMARY_URL', parameters('primaryBackendUrl'))]",
-    "agentsPolicyFinal": "[if(variables('hasSecondaryRegion'), replace(variables('agentsPolicyWithPrimary'), 'SECONDARY_URL', parameters('secondaryBackendUrl')), variables('agentsPolicyWithPrimary'))]"
+    "agentsPolicyFinal": "[if(variables('hasSecondaryRegion'), replace(variables('agentsPolicyWithPrimary'), 'SECONDARY_URL', parameters('secondaryBackendUrl')), variables('agentsPolicyWithPrimary'))]",
+    "singleRegionHealthPolicyXml": "<policies>\r\n  <inbound>\r\n    <base />\r\n    <send-request mode=\"new\" response-variable-name=\"primaryResponse\" timeout=\"10\" ignore-error=\"true\">\r\n      <set-url>PRIMARY_URL/health</set-url>\r\n      <set-method>GET</set-method>\r\n    </send-request>\r\n    <return-response>\r\n      <set-status code=\"200\" reason=\"OK\" />\r\n      <set-header name=\"Content-Type\" exists-action=\"override\">\r\n        <value>application/json</value>\r\n      </set-header>\r\n      <set-body>@{\r\n        var primaryBody = ((IResponse)context.Variables[\"primaryResponse\"])?.Body?.As&lt;JObject&gt;();\r\n        var regions = new JArray();\r\n        if (primaryBody != null) {\r\n          var region = primaryBody[\"region\"]?.ToString() ?? \"primary\";\r\n          primaryBody[\"region\"] = region;\r\n          regions.Add(new JObject(\r\n            new JProperty(\"region\", region),\r\n            new JProperty(\"status\", primaryBody[\"status\"]?.ToString() ?? \"unknown\"),\r\n            new JProperty(\"agents_loaded\", primaryBody[\"agents_loaded\"])\r\n          ));\r\n        }\r\n        return new JObject(\r\n          new JProperty(\"status\", primaryBody != null ? \"healthy\" : \"unhealthy\"),\r\n          new JProperty(\"regions\", regions),\r\n          new JProperty(\"mode\", \"single-region\")\r\n        ).ToString();\r\n      }</set-body>\r\n    </return-response>\r\n  </inbound>\r\n  <backend><base /></backend>\r\n  <outbound><base /></outbound>\r\n  <on-error><base /></on-error>\r\n</policies>",
+    "multiRegionHealthPolicyXml": "<policies>\r\n  <inbound>\r\n    <base />\r\n    <send-request mode=\"new\" response-variable-name=\"primaryResponse\" timeout=\"10\" ignore-error=\"true\">\r\n      <set-url>PRIMARY_URL/health</set-url>\r\n      <set-method>GET</set-method>\r\n    </send-request>\r\n    <send-request mode=\"new\" response-variable-name=\"secondaryResponse\" timeout=\"10\" ignore-error=\"true\">\r\n      <set-url>SECONDARY_URL/health</set-url>\r\n      <set-method>GET</set-method>\r\n    </send-request>\r\n    <return-response>\r\n      <set-status code=\"200\" reason=\"OK\" />\r\n      <set-header name=\"Content-Type\" exists-action=\"override\">\r\n        <value>application/json</value>\r\n      </set-header>\r\n      <set-body>@{\r\n        var primaryBody = ((IResponse)context.Variables[\"primaryResponse\"])?.Body?.As&lt;JObject&gt;();\r\n        var secondaryBody = ((IResponse)context.Variables[\"secondaryResponse\"])?.Body?.As&lt;JObject&gt;();\r\n        \r\n        var regions = new JArray();\r\n        int healthyCount = 0;\r\n        \r\n        if (primaryBody != null) {\r\n          var region = primaryBody[\"region\"]?.ToString() ?? \"primary\";\r\n          var status = primaryBody[\"status\"]?.ToString() ?? \"unknown\";\r\n          regions.Add(new JObject(\r\n            new JProperty(\"region\", region),\r\n            new JProperty(\"status\", status),\r\n            new JProperty(\"agents_loaded\", primaryBody[\"agents_loaded\"])\r\n          ));\r\n          if (status == \"ok\") healthyCount++;\r\n        } else {\r\n          regions.Add(new JObject(\r\n            new JProperty(\"region\", \"primary\"),\r\n            new JProperty(\"status\", \"unreachable\"),\r\n            new JProperty(\"agents_loaded\", 0)\r\n          ));\r\n        }\r\n        \r\n        if (secondaryBody != null) {\r\n          var region = secondaryBody[\"region\"]?.ToString() ?? \"secondary\";\r\n          var status = secondaryBody[\"status\"]?.ToString() ?? \"unknown\";\r\n          regions.Add(new JObject(\r\n            new JProperty(\"region\", region),\r\n            new JProperty(\"status\", status),\r\n            new JProperty(\"agents_loaded\", secondaryBody[\"agents_loaded\"])\r\n          ));\r\n          if (status == \"ok\") healthyCount++;\r\n        } else {\r\n          regions.Add(new JObject(\r\n            new JProperty(\"region\", \"secondary\"),\r\n            new JProperty(\"status\", \"unreachable\"),\r\n            new JProperty(\"agents_loaded\", 0)\r\n          ));\r\n        }\r\n        \r\n        var overallStatus = healthyCount == 2 ? \"healthy\" : (healthyCount == 1 ? \"degraded\" : \"unhealthy\");\r\n        \r\n        return new JObject(\r\n          new JProperty(\"status\", overallStatus),\r\n          new JProperty(\"healthy_regions\", healthyCount),\r\n          new JProperty(\"total_regions\", 2),\r\n          new JProperty(\"regions\", regions),\r\n          new JProperty(\"mode\", \"active-active\")\r\n        ).ToString();\r\n      }</set-body>\r\n    </return-response>\r\n  </inbound>\r\n  <backend><base /></backend>\r\n  <outbound><base /></outbound>\r\n  <on-error><base /></on-error>\r\n</policies>",
+    "healthPolicyTemplate": "[if(variables('hasSecondaryRegion'), variables('multiRegionHealthPolicyXml'), variables('singleRegionHealthPolicyXml'))]",
+    "healthPolicyWithPrimary": "[replace(variables('healthPolicyTemplate'), 'PRIMARY_URL', parameters('primaryBackendUrl'))]",
+    "healthPolicyFinal": "[if(variables('hasSecondaryRegion'), replace(variables('healthPolicyWithPrimary'), 'SECONDARY_URL', parameters('secondaryBackendUrl')), variables('healthPolicyWithPrimary'))]"
   },
   "resources": [
     {
@@ -59,7 +64,7 @@
       "properties": {
         "type": "Pool",
         "pool": {
-          "services": "[if(not(empty(parameters('secondaryBackendUrl'))), createArray(createObject('id', resourceId('Microsoft.ApiManagement/service/backends', parameters('apimName'), 'primary-backend'), 'priority', 1, 'weight', 1), createObject('id', resourceId('Microsoft.ApiManagement/service/backends', parameters('apimName'), 'secondary-backend'), 'priority', 2, 'weight', 1)), createArray(createObject('id', resourceId('Microsoft.ApiManagement/service/backends', parameters('apimName'), 'primary-backend'), 'priority', 1, 'weight', 1)))]"
+          "services": "[if(not(empty(parameters('secondaryBackendUrl'))), createArray(createObject('id', resourceId('Microsoft.ApiManagement/service/backends', parameters('apimName'), 'primary-backend'), 'priority', 1, 'weight', 1), createObject('id', resourceId('Microsoft.ApiManagement/service/backends', parameters('apimName'), 'secondary-backend'), 'priority', 1, 'weight', 1)), createArray(createObject('id', resourceId('Microsoft.ApiManagement/service/backends', parameters('apimName'), 'primary-backend'), 'priority', 1, 'weight', 1)))]"
         }
       },
       "dependsOn": [
@@ -145,6 +150,18 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.ApiManagement/service/apis/operations', parameters('apimName'), 'bing-grounding-api', 'agents')]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/operations/policies",
+      "apiVersion": "2022-08-01",
+      "name": "[format('{0}/{1}/{2}/{3}', parameters('apimName'), 'bing-grounding-api', 'health', 'policy')]",
+      "properties": {
+        "format": "xml",
+        "value": "[variables('healthPolicyFinal')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis/operations', parameters('apimName'), 'bing-grounding-api', 'health')]"
       ]
     },
     {
