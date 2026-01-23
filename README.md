@@ -668,6 +668,151 @@ This repository includes GitHub Actions workflows for automated deployment:
 | **Deploy Infrastructure** | `.github/workflows/deploy-infra.yml` | Provision/teardown Azure resources via azd |
 | **Agent Weights** | `.github/workflows/agent-weights.yml` | Blue/green deployment via agent weight management |
 
+#### Pipeline Flow Diagrams
+
+##### Deploy App Pipeline (`deploy.yml`)
+
+Triggered on push to `main` branch. Deploys application to both regions, configures agents, and updates APIM.
+
+```mermaid
+flowchart TD
+    subgraph Build
+        A[📦 Checkout Code] --> B[🐍 Setup Python]
+        B --> C[📥 Install Dependencies]
+        C --> D[🗜️ Create Deploy Package]
+        D --> E[⬆️ Upload Artifact]
+    end
+
+    subgraph "Deploy Primary (East US 2)"
+        F[⬇️ Download Artifact] --> G[🔐 Azure Login OIDC]
+        G --> H[🚀 Deploy to App Service]
+        H --> I[❤️ Health Check]
+        I --> J[📋 Deploy Models]
+        J --> K[🔗 Create Bing Connection]
+        K --> L[🤖 Configure Agents]
+        L --> M[🔄 Refresh App Service]
+    end
+
+    subgraph "Deploy Secondary (West US 2)"
+        N[⬇️ Download Artifact] --> O[🔐 Azure Login OIDC]
+        O --> P[🚀 Deploy to App Service]
+        P --> Q[❤️ Health Check]
+        Q --> R[📋 Deploy Models]
+        R --> S[🔗 Create Bing Connection]
+        S --> T[🤖 Configure Agents]
+        T --> U[🔄 Refresh App Service]
+    end
+
+    subgraph "Update APIM"
+        V[📂 Checkout Code] --> W[🔐 Azure Login OIDC]
+        W --> X[🌐 Deploy APIM Bicep]
+        X --> Y[✅ Backends + Pool + API]
+    end
+
+    subgraph Summary
+        Z[📊 Deployment Summary]
+    end
+
+    E --> F
+    E --> N
+    M --> V
+    U --> V
+    Y --> Z
+
+    style Build fill:#e1f5fe
+    style "Deploy Primary (East US 2)" fill:#e8f5e9
+    style "Deploy Secondary (West US 2)" fill:#fff3e0
+    style "Update APIM" fill:#f3e5f5
+    style Summary fill:#fce4ec
+```
+
+##### Deploy Infrastructure Pipeline (`deploy-infra.yml`)
+
+Manually triggered to provision or teardown Azure infrastructure.
+
+```mermaid
+flowchart TD
+    subgraph Inputs
+        A{Action?}
+    end
+
+    subgraph "Provision Flow"
+        B[📂 Checkout Code] --> C[🔐 Azure Login]
+        C --> D[⚙️ Setup azd]
+        D --> E[🏗️ azd provision]
+        E --> F[🚀 azd deploy]
+        F --> G[✅ Output Endpoints]
+    end
+
+    subgraph "Teardown Flow"
+        H[📂 Checkout Code] --> I[🔐 Azure Login]
+        I --> J[⚙️ Setup azd]
+        J --> K[🗑️ azd down --force]
+        K --> L[✅ Resources Deleted]
+    end
+
+    A -->|provision| B
+    A -->|teardown| H
+
+    style Inputs fill:#fff9c4
+    style "Provision Flow" fill:#e8f5e9
+    style "Teardown Flow" fill:#ffebee
+```
+
+##### Agent Weights Pipeline (`agent-weights.yml`)
+
+Manually triggered for blue/green deployments by adjusting agent traffic weights.
+
+```mermaid
+flowchart TD
+    subgraph Inputs
+        A[🎯 Select Deployment Type]
+        B[📊 Set Weight Percentages]
+    end
+
+    subgraph Execution
+        C[📂 Checkout Code] --> D[🔐 Azure Login]
+        D --> E[🐍 Setup Python]
+        E --> F{Deployment Type?}
+    end
+
+    subgraph "Blue/Green"
+        G[🔵 Set Blue: 0%]
+        G --> H[🟢 Set Green: 100%]
+    end
+
+    subgraph "Canary"
+        I[🔵 Set Stable: 90%]
+        I --> J[🟡 Set Canary: 10%]
+    end
+
+    subgraph "Custom"
+        K[⚙️ Apply Custom Weights]
+    end
+
+    subgraph Finalize
+        L[🔄 Refresh Agents]
+        M[✅ Verify Weights]
+    end
+
+    A --> C
+    B --> C
+    F -->|blue-green| G
+    F -->|canary| I
+    F -->|custom| K
+    H --> L
+    J --> L
+    K --> L
+    L --> M
+
+    style Inputs fill:#fff9c4
+    style Execution fill:#e1f5fe
+    style "Blue/Green" fill:#e8f5e9
+    style "Canary" fill:#fff3e0
+    style "Custom" fill:#f3e5f5
+    style Finalize fill:#fce4ec
+```
+
 #### Step 1: Create Azure Service Principal
 
 Create a service principal with OIDC (federated credentials) for passwordless authentication:
