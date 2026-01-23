@@ -1,5 +1,35 @@
 {
-  "description": "Agent configuration with traffic weighting and model parameters. This file is safe to check in.",
+  "description": "Agent and model configuration. Models are auto-deployed based on agent requirements.",
+  "models": {
+    "gpt-4o": {
+      "enabled": true,
+      "sku": "GlobalStandard",
+      "capacity": 10,
+      "version": "2024-08-06",
+      "description": "GPT-4o - Best for complex reasoning and multimodal tasks"
+    },
+    "gpt-4.1-mini": {
+      "enabled": true,
+      "sku": "GlobalStandard",
+      "capacity": 10,
+      "version": "2025-04-14",
+      "description": "GPT-4.1-mini - Cost-effective for simpler queries"
+    },
+    "gpt-4": {
+      "enabled": false,
+      "sku": "Standard",
+      "capacity": 10,
+      "version": "turbo-2024-04-09",
+      "description": "GPT-4 - Legacy model"
+    },
+    "gpt-35-turbo": {
+      "enabled": false,
+      "sku": "Standard",
+      "capacity": 10,
+      "version": "0125",
+      "description": "GPT-3.5-turbo - Fastest, lowest cost"
+    }
+  },
   "agents": [
     {
       "name": "gpt4o_1",

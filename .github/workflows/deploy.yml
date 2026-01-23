@@ -237,6 +237,14 @@ jobs:
           echo "bing_connection_id=$BING_CONNECTION_ID" >> $GITHUB_OUTPUT
           echo "rg=$RG" >> $GITHUB_OUTPUT
 
+      - name: Deploy required models
+        run: |
+          echo "Deploying models from agents.config.json..."
+          python scripts/postprovision_deploy_models.py
+        env:
+          AZURE_FOUNDRY_NAME: ${{ steps.resources.outputs.foundry_name }}
+          AZURE_RESOURCE_GROUP: rg-bing-grounding-mcp-prod
+
       - name: Create Bing Connection in AI Foundry
         run: |
           echo "Creating Bing connection in AI Foundry project..."
@@ -413,6 +421,14 @@ jobs:
           echo "project_name=$PROJECT_NAME" >> $GITHUB_OUTPUT
           echo "bing_connection_id=$BING_CONNECTION_ID" >> $GITHUB_OUTPUT
           echo "rg=$RG" >> $GITHUB_OUTPUT
+
+      - name: Deploy required models
+        run: |
+          echo "Deploying models from agents.config.json..."
+          python scripts/postprovision_deploy_models.py
+        env:
+          AZURE_FOUNDRY_NAME: ${{ steps.resources.outputs.foundry_name }}
+          AZURE_RESOURCE_GROUP: rg-bing-grounding-mcp-prod-secondary
 
       - name: Create Bing Connection in AI Foundry
         run: |
