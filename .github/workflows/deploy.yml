@@ -235,6 +235,45 @@ jobs:
           echo "foundry_name=$FOUNDRY_NAME" >> $GITHUB_OUTPUT
           echo "project_name=$PROJECT_NAME" >> $GITHUB_OUTPUT
           echo "bing_connection_id=$BING_CONNECTION_ID" >> $GITHUB_OUTPUT
+          echo "rg=$RG" >> $GITHUB_OUTPUT
+
+      - name: Create Bing Connection in AI Foundry
+        run: |
+          echo "Creating Bing connection in AI Foundry project..."
+          RG="${{ steps.resources.outputs.rg }}"
+          FOUNDRY_NAME="${{ steps.resources.outputs.foundry_name }}"
+          BING_ID="${{ steps.resources.outputs.bing_id }}"
+          
+          if [ -z "$BING_ID" ]; then
+            echo "⚠️ No Bing resource found - skipping connection creation"
+            exit 0
+          fi
+          
+          # Extract Bing resource name and group from ID
+          # ID format: /subscriptions/.../resourceGroups/RG/providers/Microsoft.Bing/accounts/NAME
+          BING_NAME=$(echo "$BING_ID" | sed 's|.*/||')
+          BING_RG=$(echo "$BING_ID" | sed 's|.*resourceGroups/||' | sed 's|/providers.*||')
+          
+          echo "📋 Connection Details:"
+          echo "   AI Foundry: $FOUNDRY_NAME"
+          echo "   Bing Resource: $BING_NAME"
+          echo "   Bing Resource Group: $BING_RG"
+          echo "   Target Resource Group: $RG"
+          
+          # Deploy the Bing connection using Bicep
+          echo "🚀 Deploying Bing connection..."
+          az deployment group create \
+            --resource-group "$RG" \
+            --template-file infra/bing-connection.bicep \
+            --parameters \
+              foundryName="$FOUNDRY_NAME" \
+              bingResourceId="$BING_ID" \
+              bingResourceName="$BING_NAME" \
+              bingResourceGroup="$BING_RG" \
+            --name "bing-connection-$(date +%Y%m%d%H%M%S)" \
+            || echo "⚠️ Connection may already exist or deployment had issues"
+          
+          echo "✅ Bing connection deployment complete"
 
       - name: Configure agents
         run: |
@@ -373,6 +412,44 @@ jobs:
           echo "foundry_name=$FOUNDRY_NAME" >> $GITHUB_OUTPUT
           echo "project_name=$PROJECT_NAME" >> $GITHUB_OUTPUT
           echo "bing_connection_id=$BING_CONNECTION_ID" >> $GITHUB_OUTPUT
+          echo "rg=$RG" >> $GITHUB_OUTPUT
+
+      - name: Create Bing Connection in AI Foundry
+        run: |
+          echo "Creating Bing connection in AI Foundry project..."
+          RG="${{ steps.resources.outputs.rg }}"
+          FOUNDRY_NAME="${{ steps.resources.outputs.foundry_name }}"
+          BING_ID="${{ steps.resources.outputs.bing_id }}"
+          
+          if [ -z "$BING_ID" ]; then
+            echo "⚠️ No Bing resource found - skipping connection creation"
+            exit 0
+          fi
+          
+          # Extract Bing resource name and group from ID
+          BING_NAME=$(echo "$BING_ID" | sed 's|.*/||')
+          BING_RG=$(echo "$BING_ID" | sed 's|.*resourceGroups/||' | sed 's|/providers.*||')
+          
+          echo "📋 Connection Details:"
+          echo "   AI Foundry: $FOUNDRY_NAME"
+          echo "   Bing Resource: $BING_NAME"
+          echo "   Bing Resource Group: $BING_RG"
+          echo "   Target Resource Group: $RG"
+          
+          # Deploy the Bing connection using Bicep
+          echo "🚀 Deploying Bing connection..."
+          az deployment group create \
+            --resource-group "$RG" \
+            --template-file infra/bing-connection.bicep \
+            --parameters \
+              foundryName="$FOUNDRY_NAME" \
+              bingResourceId="$BING_ID" \
+              bingResourceName="$BING_NAME" \
+              bingResourceGroup="$BING_RG" \
+            --name "bing-connection-$(date +%Y%m%d%H%M%S)" \
+            || echo "⚠️ Connection may already exist or deployment had issues"
+          
+          echo "✅ Bing connection deployment complete"
 
       - name: Configure agents
         run: |
