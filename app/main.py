@@ -168,6 +168,7 @@ async def refresh_agents():
     load_agents()
     return {
         "status": "refreshed",
+        "region": AZURE_REGION,
         "total": len(AGENTS),
         "agents": [
             {"route": route, "model": info["model"], "weight": info.get("weight", 100)}

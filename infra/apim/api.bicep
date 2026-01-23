@@ -115,7 +115,100 @@ resource agentsOperationRest 'Microsoft.ApiManagement/service/apis/operations@20
     displayName: 'List Agents'
     method: 'GET'
     urlTemplate: '/agents'
-    description: 'List all available agents'
+    description: 'List all available agents from all regions'
+  }
+}
+
+// Agents operation policy - aggregate from both regions
+var agentsPolicyXml = '''<policies>
+  <inbound>
+    <base />
+    <!-- Call primary region -->
+    <send-request mode="new" response-variable-name="primaryResponse" timeout="30" ignore-error="true">
+      <set-url>PRIMARY_URL/agents</set-url>
+      <set-method>GET</set-method>
+    </send-request>
+    <!-- Call secondary region (if configured) -->
+    <choose>
+      <when condition="@("SECONDARY_URL" != "")">
+        <send-request mode="new" response-variable-name="secondaryResponse" timeout="30" ignore-error="true">
+          <set-url>SECONDARY_URL/agents</set-url>
+          <set-method>GET</set-method>
+        </send-request>
+      </when>
+      <otherwise>
+        <set-variable name="secondaryResponse" value="@(null)" />
+      </otherwise>
+    </choose>
+    <!-- Merge responses -->
+    <return-response>
+      <set-status code="200" reason="OK" />
+      <set-header name="Content-Type" exists-action="override">
+        <value>application/json</value>
+      </set-header>
+      <set-body>@{
+        var primaryBody = ((IResponse)context.Variables["primaryResponse"])?.Body?.As<JObject>();
+        var secondaryBody = context.Variables.ContainsKey("secondaryResponse") && context.Variables["secondaryResponse"] != null 
+          ? ((IResponse)context.Variables["secondaryResponse"])?.Body?.As<JObject>() 
+          : null;
+        
+        var regions = new JArray();
+        var allAgents = new JArray();
+        int total = 0;
+        
+        if (primaryBody != null) {
+          var primaryRegion = primaryBody["region"]?.ToString() ?? "primary";
+          regions.Add(primaryRegion);
+          var primaryAgents = primaryBody["agents"] as JArray;
+          if (primaryAgents != null) {
+            foreach (var agent in primaryAgents) {
+              var agentObj = (JObject)agent.DeepClone();
+              agentObj["region"] = primaryRegion;
+              allAgents.Add(agentObj);
+            }
+            total += primaryAgents.Count;
+          }
+        }
+        
+        if (secondaryBody != null) {
+          var secondaryRegion = secondaryBody["region"]?.ToString() ?? "secondary";
+          regions.Add(secondaryRegion);
+          var secondaryAgents = secondaryBody["agents"] as JArray;
+          if (secondaryAgents != null) {
+            foreach (var agent in secondaryAgents) {
+              var agentObj = (JObject)agent.DeepClone();
+              agentObj["region"] = secondaryRegion;
+              allAgents.Add(agentObj);
+            }
+            total += secondaryAgents.Count;
+          }
+        }
+        
+        return new JObject(
+          new JProperty("total", total),
+          new JProperty("regions", regions),
+          new JProperty("agents", allAgents)
+        ).ToString();
+      }</set-body>
+    </return-response>
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>'''
+
+resource agentsOperationPolicy 'Microsoft.ApiManagement/service/apis/operations/policies@2022-08-01' = {
+  parent: agentsOperationRest
+  name: 'policy'
+  properties: {
+    format: 'xml'
+    value: replace(replace(agentsPolicyXml, 'PRIMARY_URL', primaryBackendUrl), 'SECONDARY_URL', secondaryBackendUrl)
   }
 }
 

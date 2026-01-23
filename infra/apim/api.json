@@ -1,0 +1,179 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.39.26.7824",
+      "templateHash": "17122384028283016395"
+    }
+  },
+  "parameters": {
+    "apimName": {
+      "type": "string"
+    },
+    "primaryBackendUrl": {
+      "type": "string"
+    },
+    "secondaryBackendUrl": {
+      "type": "string",
+      "defaultValue": ""
+    }
+  },
+  "variables": {
+    "agentsPolicyXml": "<policies>\r\n  <inbound>\r\n    <base />\r\n    <!-- Call primary region -->\r\n    <send-request mode=\"new\" response-variable-name=\"primaryResponse\" timeout=\"30\" ignore-error=\"true\">\r\n      <set-url>PRIMARY_URL/agents</set-url>\r\n      <set-method>GET</set-method>\r\n    </send-request>\r\n    <!-- Call secondary region (if configured) -->\r\n    <choose>\r\n      <when condition=\"@(\"SECONDARY_URL\" != \"\")\">\r\n        <send-request mode=\"new\" response-variable-name=\"secondaryResponse\" timeout=\"30\" ignore-error=\"true\">\r\n          <set-url>SECONDARY_URL/agents</set-url>\r\n          <set-method>GET</set-method>\r\n        </send-request>\r\n      </when>\r\n      <otherwise>\r\n        <set-variable name=\"secondaryResponse\" value=\"@(null)\" />\r\n      </otherwise>\r\n    </choose>\r\n    <!-- Merge responses -->\r\n    <return-response>\r\n      <set-status code=\"200\" reason=\"OK\" />\r\n      <set-header name=\"Content-Type\" exists-action=\"override\">\r\n        <value>application/json</value>\r\n      </set-header>\r\n      <set-body>@{\r\n        var primaryBody = ((IResponse)context.Variables[\"primaryResponse\"])?.Body?.As<JObject>();\r\n        var secondaryBody = context.Variables.ContainsKey(\"secondaryResponse\") && context.Variables[\"secondaryResponse\"] != null \r\n          ? ((IResponse)context.Variables[\"secondaryResponse\"])?.Body?.As<JObject>() \r\n          : null;\r\n        \r\n        var regions = new JArray();\r\n        var allAgents = new JArray();\r\n        int total = 0;\r\n        \r\n        if (primaryBody != null) {\r\n          var primaryRegion = primaryBody[\"region\"]?.ToString() ?? \"primary\";\r\n          regions.Add(primaryRegion);\r\n          var primaryAgents = primaryBody[\"agents\"] as JArray;\r\n          if (primaryAgents != null) {\r\n            foreach (var agent in primaryAgents) {\r\n              var agentObj = (JObject)agent.DeepClone();\r\n              agentObj[\"region\"] = primaryRegion;\r\n              allAgents.Add(agentObj);\r\n            }\r\n            total += primaryAgents.Count;\r\n          }\r\n        }\r\n        \r\n        if (secondaryBody != null) {\r\n          var secondaryRegion = secondaryBody[\"region\"]?.ToString() ?? \"secondary\";\r\n          regions.Add(secondaryRegion);\r\n          var secondaryAgents = secondaryBody[\"agents\"] as JArray;\r\n          if (secondaryAgents != null) {\r\n            foreach (var agent in secondaryAgents) {\r\n              var agentObj = (JObject)agent.DeepClone();\r\n              agentObj[\"region\"] = secondaryRegion;\r\n              allAgents.Add(agentObj);\r\n            }\r\n            total += secondaryAgents.Count;\r\n          }\r\n        }\r\n        \r\n        return new JObject(\r\n          new JProperty(\"total\", total),\r\n          new JProperty(\"regions\", regions),\r\n          new JProperty(\"agents\", allAgents)\r\n        ).ToString();\r\n      }</set-body>\r\n    </return-response>\r\n  </inbound>\r\n  <backend>\r\n    <base />\r\n  </backend>\r\n  <outbound>\r\n    <base />\r\n  </outbound>\r\n  <on-error>\r\n    <base />\r\n  </on-error>\r\n</policies>"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ApiManagement/service/backends",
+      "apiVersion": "2022-08-01",
+      "name": "[format('{0}/{1}', parameters('apimName'), 'primary-backend')]",
+      "properties": {
+        "url": "[parameters('primaryBackendUrl')]",
+        "protocol": "http",
+        "title": "Primary App Service",
+        "description": "Primary backend in East US 2"
+      }
+    },
+    {
+      "condition": "[not(empty(parameters('secondaryBackendUrl')))]",
+      "type": "Microsoft.ApiManagement/service/backends",
+      "apiVersion": "2022-08-01",
+      "name": "[format('{0}/{1}', parameters('apimName'), 'secondary-backend')]",
+      "properties": {
+        "url": "[parameters('secondaryBackendUrl')]",
+        "protocol": "http",
+        "title": "Secondary App Service",
+        "description": "Secondary backend in West US 2"
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/backends",
+      "apiVersion": "2023-09-01-preview",
+      "name": "[format('{0}/{1}', parameters('apimName'), 'multi-region-pool')]",
+      "properties": {
+        "type": "Pool",
+        "pool": {
+          "services": "[if(not(empty(parameters('secondaryBackendUrl'))), createArray(createObject('id', resourceId('Microsoft.ApiManagement/service/backends', parameters('apimName'), 'primary-backend'), 'priority', 1, 'weight', 1), createObject('id', resourceId('Microsoft.ApiManagement/service/backends', parameters('apimName'), 'secondary-backend'), 'priority', 2, 'weight', 1)), createArray(createObject('id', resourceId('Microsoft.ApiManagement/service/backends', parameters('apimName'), 'primary-backend'), 'priority', 1, 'weight', 1)))]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/backends', parameters('apimName'), 'primary-backend')]",
+        "[resourceId('Microsoft.ApiManagement/service/backends', parameters('apimName'), 'secondary-backend')]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis",
+      "apiVersion": "2022-08-01",
+      "name": "[format('{0}/{1}', parameters('apimName'), 'bing-grounding-api')]",
+      "properties": {
+        "displayName": "Bing Grounding REST API",
+        "description": "REST API for Bing Grounding operations",
+        "path": "bing-grounding",
+        "protocols": [
+          "https"
+        ],
+        "subscriptionRequired": false
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/policies",
+      "apiVersion": "2022-08-01",
+      "name": "[format('{0}/{1}/{2}', parameters('apimName'), 'bing-grounding-api', 'policy')]",
+      "properties": {
+        "format": "xml",
+        "value": "<policies><inbound><base /><set-backend-service backend-id=\"multi-region-pool\" /></inbound><backend><forward-request timeout=\"120\" /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimName'), 'bing-grounding-api')]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/operations",
+      "apiVersion": "2022-08-01",
+      "name": "[format('{0}/{1}/{2}', parameters('apimName'), 'bing-grounding-api', 'bing-grounding')]",
+      "properties": {
+        "displayName": "Bing Grounding",
+        "method": "POST",
+        "urlTemplate": "/chat",
+        "description": "Send chat completion request with Bing grounding"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimName'), 'bing-grounding-api')]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/operations",
+      "apiVersion": "2022-08-01",
+      "name": "[format('{0}/{1}/{2}', parameters('apimName'), 'bing-grounding-api', 'health')]",
+      "properties": {
+        "displayName": "Health Check",
+        "method": "GET",
+        "urlTemplate": "/health",
+        "description": "Check API and backend health status"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimName'), 'bing-grounding-api')]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/operations",
+      "apiVersion": "2022-08-01",
+      "name": "[format('{0}/{1}/{2}', parameters('apimName'), 'bing-grounding-api', 'agents')]",
+      "properties": {
+        "displayName": "List Agents",
+        "method": "GET",
+        "urlTemplate": "/agents",
+        "description": "List all available agents from all regions"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimName'), 'bing-grounding-api')]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/operations/policies",
+      "apiVersion": "2022-08-01",
+      "name": "[format('{0}/{1}/{2}/{3}', parameters('apimName'), 'bing-grounding-api', 'agents', 'policy')]",
+      "properties": {
+        "format": "xml",
+        "value": "[replace(replace(variables('agentsPolicyXml'), 'PRIMARY_URL', parameters('primaryBackendUrl')), 'SECONDARY_URL', parameters('secondaryBackendUrl'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis/operations', parameters('apimName'), 'bing-grounding-api', 'agents')]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis",
+      "apiVersion": "2024-06-01-preview",
+      "name": "[format('{0}/{1}', parameters('apimName'), 'bing-grounding-mcp')]",
+      "properties": {
+        "displayName": "Bing Grounding MCP",
+        "description": "MCP Server for Bing Grounding with multi-region failover",
+        "path": "mcp",
+        "protocols": [
+          "https"
+        ],
+        "subscriptionRequired": false,
+        "type": "mcp"
+      }
+    }
+  ],
+  "outputs": {
+    "restApiId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimName'), 'bing-grounding-api')]"
+    },
+    "mcpApiId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimName'), 'bing-grounding-mcp')]"
+    },
+    "apiPath": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ApiManagement/service/apis', parameters('apimName'), 'bing-grounding-mcp'), '2024-06-01-preview').path]"
+    },
+    "backendPoolId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.ApiManagement/service/backends', parameters('apimName'), 'multi-region-pool')]"
+    }
+  }
+}
