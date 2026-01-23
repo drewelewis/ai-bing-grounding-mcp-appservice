@@ -548,6 +548,7 @@ jobs:
           
           RG="rg-bing-grounding-mcp-prod"
           APIM_NAME="apim-52hltr3kdvkvo"
+          SUB_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           
           PRIMARY_URL="https://${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}.azurewebsites.net"
           SECONDARY_URL="${{ vars.AZURE_WEBAPP_NAME_SECONDARY && format('https://{0}.azurewebsites.net', vars.AZURE_WEBAPP_NAME_SECONDARY) || '' }}"
@@ -565,7 +566,58 @@ jobs:
               secondaryBackendUrl="$SECONDARY_URL" \
             --name "apim-api-$(date +%Y%m%d%H%M%S)"
           
-          echo "✅ APIM API and backends deployed successfully"
+          echo "✅ APIM REST API and backends deployed successfully"
+          
+          # Configure MCP API with mcpTools
+          echo "🔧 Configuring MCP API with mcpTools..."
+          
+          REST_API_NAME="bing-grounding-api"
+          MCP_API_NAME="bing-grounding-mcp"
+          BASE_PATH="/subscriptions/${SUB_ID}/resourceGroups/${RG}/providers/Microsoft.ApiManagement/service/${APIM_NAME}"
+          API_VERSION="2024-06-01-preview"
+          
+          # Build mcpTools JSON
+          MCP_TOOLS=$(cat <<EOF
+          [
+            {
+              "name": "bingGrounding",
+              "operationId": "${BASE_PATH}/apis/${REST_API_NAME}/operations/bing-grounding"
+            },
+            {
+              "name": "healthCheck",
+              "operationId": "${BASE_PATH}/apis/${REST_API_NAME}/operations/health"
+            },
+            {
+              "name": "listAgents",
+              "operationId": "${BASE_PATH}/apis/${REST_API_NAME}/operations/agents"
+            }
+          ]
+          EOF
+          )
+          
+          # Build API properties
+          API_BODY=$(cat <<EOF
+          {
+            "properties": {
+              "displayName": "Bing Grounding MCP",
+              "description": "MCP Server for Bing Grounding with multi-region failover",
+              "path": "mcp",
+              "protocols": ["https"],
+              "subscriptionRequired": false,
+              "type": "mcp",
+              "mcpTools": ${MCP_TOOLS}
+            }
+          }
+          EOF
+          )
+          
+          echo "📤 Updating MCP API with tools..."
+          az rest \
+            --method PUT \
+            --uri "https://management.azure.com${BASE_PATH}/apis/${MCP_API_NAME}?api-version=${API_VERSION}" \
+            --body "${API_BODY}"
+          
+          echo "✅ MCP API configured with tools"
 
   summary:
     name: Deployment Summary

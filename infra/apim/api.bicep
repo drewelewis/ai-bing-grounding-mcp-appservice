@@ -62,22 +62,22 @@ resource backendPool 'Microsoft.ApiManagement/service/backends@2023-09-01-previe
   }
 }
 
-// MCP API - routes to multi-region backend pool
-resource mcpApi 'Microsoft.ApiManagement/service/apis@2022-08-01' = {
+// REST API - provides the actual backend operations
+resource restApi 'Microsoft.ApiManagement/service/apis@2022-08-01' = {
   parent: apim
-  name: 'bing-grounding-mcp'
+  name: 'bing-grounding-api'
   properties: {
-    displayName: 'Bing Grounding MCP API'
-    description: 'Multi-region Bing Grounding MCP Server API with automatic failover'
-    path: 'mcp'
+    displayName: 'Bing Grounding REST API'
+    description: 'REST API for Bing Grounding operations'
+    path: 'bing-grounding'
     protocols: ['https']
     subscriptionRequired: false
   }
 }
 
-// API Policy - route to backend pool
-resource mcpApiPolicy 'Microsoft.ApiManagement/service/apis/policies@2022-08-01' = {
-  parent: mcpApi
+// REST API Policy - route to backend pool
+resource restApiPolicy 'Microsoft.ApiManagement/service/apis/policies@2022-08-01' = {
+  parent: restApi
   name: 'policy'
   properties: {
     format: 'xml'
@@ -85,9 +85,20 @@ resource mcpApiPolicy 'Microsoft.ApiManagement/service/apis/policies@2022-08-01'
   }
 }
 
-// Operations
-resource healthOperation 'Microsoft.ApiManagement/service/apis/operations@2022-08-01' = {
-  parent: mcpApi
+// REST API Operations
+resource bingGroundingOperation 'Microsoft.ApiManagement/service/apis/operations@2022-08-01' = {
+  parent: restApi
+  name: 'bing-grounding'
+  properties: {
+    displayName: 'Bing Grounding'
+    method: 'POST'
+    urlTemplate: '/chat'
+    description: 'Send chat completion request with Bing grounding'
+  }
+}
+
+resource healthOperationRest 'Microsoft.ApiManagement/service/apis/operations@2022-08-01' = {
+  parent: restApi
   name: 'health'
   properties: {
     displayName: 'Health Check'
@@ -97,50 +108,34 @@ resource healthOperation 'Microsoft.ApiManagement/service/apis/operations@2022-0
   }
 }
 
-resource agentsOperation 'Microsoft.ApiManagement/service/apis/operations@2022-08-01' = {
-  parent: mcpApi
+resource agentsOperationRest 'Microsoft.ApiManagement/service/apis/operations@2022-08-01' = {
+  parent: restApi
   name: 'agents'
   properties: {
     displayName: 'List Agents'
     method: 'GET'
     urlTemplate: '/agents'
-    description: 'List all available agents and their configurations'
+    description: 'List all available agents'
   }
 }
 
-resource chatOperation 'Microsoft.ApiManagement/service/apis/operations@2022-08-01' = {
-  parent: mcpApi
-  name: 'chat'
+// MCP API - exposes tools via MCP protocol
+// Note: mcpTools must be configured via Azure Portal or REST API after deployment
+// as Bicep doesn't fully support the mcpTools property yet
+resource mcpApi 'Microsoft.ApiManagement/service/apis@2024-06-01-preview' = {
+  parent: apim
+  name: 'bing-grounding-mcp'
   properties: {
-    displayName: 'Chat Completions'
-    method: 'POST'
-    urlTemplate: '/chat'
-    description: 'Send chat completion request to an agent'
+    displayName: 'Bing Grounding MCP'
+    description: 'MCP Server for Bing Grounding with multi-region failover'
+    path: 'mcp'
+    protocols: ['https']
+    subscriptionRequired: false
+    type: 'mcp'
   }
 }
 
-resource mcpMessageOperation 'Microsoft.ApiManagement/service/apis/operations@2022-08-01' = {
-  parent: mcpApi
-  name: 'mcp-message'
-  properties: {
-    displayName: 'MCP Message'
-    method: 'POST'
-    urlTemplate: '/mcp/message'
-    description: 'Send MCP protocol message'
-  }
-}
-
-resource adminRefreshOperation 'Microsoft.ApiManagement/service/apis/operations@2022-08-01' = {
-  parent: mcpApi
-  name: 'admin-refresh'
-  properties: {
-    displayName: 'Admin Refresh'
-    method: 'POST'
-    urlTemplate: '/admin/refresh'
-    description: 'Refresh agent configuration from Azure AI Foundry'
-  }
-}
-
-output apiId string = mcpApi.id
+output restApiId string = restApi.id
+output mcpApiId string = mcpApi.id
 output apiPath string = mcpApi.properties.path
 output backendPoolId string = backendPool.id
