@@ -147,6 +147,7 @@ async def list_agents():
     
     return {
         "total": len(agents_list),
+        "region": AZURE_REGION,
         "agents": agents_list
     }
 
