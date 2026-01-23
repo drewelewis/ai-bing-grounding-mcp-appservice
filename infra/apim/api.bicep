@@ -121,6 +121,7 @@ resource agentsOperationRest 'Microsoft.ApiManagement/service/apis/operations@20
 
 // Agents operation policy - aggregate from both regions
 // Two versions: one for single region, one for multi-region
+// Note: &lt; and &gt; are used to escape < and > in C# generics within XML
 var singleRegionPolicyXml = '''<policies>
   <inbound>
     <base />
@@ -134,7 +135,7 @@ var singleRegionPolicyXml = '''<policies>
         <value>application/json</value>
       </set-header>
       <set-body>@{
-        var primaryBody = ((IResponse)context.Variables["primaryResponse"])?.Body?.As<JObject>();
+        var primaryBody = ((IResponse)context.Variables["primaryResponse"])?.Body?.As&lt;JObject&gt;();
         if (primaryBody == null) {
           return new JObject(new JProperty("total", 0), new JProperty("regions", new JArray()), new JProperty("agents", new JArray())).ToString();
         }
@@ -176,8 +177,8 @@ var multiRegionPolicyXml = '''<policies>
         <value>application/json</value>
       </set-header>
       <set-body>@{
-        var primaryBody = ((IResponse)context.Variables["primaryResponse"])?.Body?.As<JObject>();
-        var secondaryBody = ((IResponse)context.Variables["secondaryResponse"])?.Body?.As<JObject>();
+        var primaryBody = ((IResponse)context.Variables["primaryResponse"])?.Body?.As&lt;JObject&gt;();
+        var secondaryBody = ((IResponse)context.Variables["secondaryResponse"])?.Body?.As&lt;JObject&gt;();
         
         var regions = new JArray();
         var allAgents = new JArray();
