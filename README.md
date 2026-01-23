@@ -294,6 +294,31 @@ APIM provides aggregated views that combine data from all regions:
 }
 ```
 
+### Design Benefits
+
+| Benefit | Description |
+|---------|-------------|
+| **503 Failover** | Simple, stateless pattern that leverages APIM's built-in retry - no custom circuit breaker needed |
+| **Per-Model Granularity** | Enables independent rollouts per model, per region |
+| **Active/Active** | Maximizes resource utilization with no idle standby capacity |
+| **Aggregated Endpoints** | Single view of all regions for operational visibility |
+| **Separation of Concerns** | APIM handles routing, App handles model selection |
+
+**When this design shines:**
+- Blue/green deployments per model
+- Canary releases with regional isolation
+- Testing new model versions in one region before global rollout
+
+### Trade-offs & Future Enhancements
+
+| Concern | Impact | Mitigation |
+|---------|--------|------------|
+| **APIM is single point of failure** | If APIM goes down, both regions unreachable | Add Azure Front Door or Traffic Manager in front |
+| **503 adds one retry hop** | ~100-200ms latency on failover | Only happens when model is disabled - acceptable for blue/green |
+| **No proactive health routing** | APIM still sends 50% to region with disabled model | Could add APIM health probes per model (complexity vs benefit) |
+
+> **Note:** The 503 failover pattern is the same approach Azure's own services use internally. It provides a good balance of simplicity and capability without requiring complex health probe configurations.
+
 ---
 
 ## Agent Configuration & Traffic Splitting
