@@ -60,10 +60,6 @@ resource backendPool 'Microsoft.ApiManagement/service/backends@2023-09-01-previe
       ]
     }
   }
-  dependsOn: [
-    primaryBackend
-    secondaryBackend
-  ]
 }
 
 // MCP API with MCP Protocol enabled
@@ -79,11 +75,9 @@ resource mcpApi 'Microsoft.ApiManagement/service/apis@2024-06-01-preview' = {
     type: 'mcp'
     mcpProperties: {
       backendId: backendPool.id
+      transportType: 'streamableHttp'
     }
   }
-  dependsOn: [
-    backendPool
-  ]
 }
 
 // API Policy - route to backend pool
@@ -94,9 +88,6 @@ resource mcpApiPolicy 'Microsoft.ApiManagement/service/apis/policies@2022-08-01'
     format: 'xml'
     value: '<policies><inbound><base /><set-backend-service backend-id="multi-region-pool" /></inbound><backend><forward-request timeout="120" /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
   }
-  dependsOn: [
-    backendPool
-  ]
 }
 
 // Operations
