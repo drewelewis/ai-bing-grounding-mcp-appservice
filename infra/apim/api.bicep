@@ -66,8 +66,8 @@ resource backendPool 'Microsoft.ApiManagement/service/backends@2023-09-01-previe
   ]
 }
 
-// MCP API
-resource mcpApi 'Microsoft.ApiManagement/service/apis@2022-08-01' = {
+// MCP API with MCP Protocol enabled
+resource mcpApi 'Microsoft.ApiManagement/service/apis@2024-06-01-preview' = {
   parent: apim
   name: 'bing-grounding-mcp'
   properties: {
@@ -76,7 +76,14 @@ resource mcpApi 'Microsoft.ApiManagement/service/apis@2022-08-01' = {
     path: 'mcp'
     protocols: ['https']
     subscriptionRequired: false
+    type: 'mcp'
+    mcpProperties: {
+      backendId: backendPool.id
+    }
   }
+  dependsOn: [
+    backendPool
+  ]
 }
 
 // API Policy - route to backend pool
