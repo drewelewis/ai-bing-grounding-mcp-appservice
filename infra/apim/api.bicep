@@ -62,8 +62,8 @@ resource backendPool 'Microsoft.ApiManagement/service/backends@2023-09-01-previe
   }
 }
 
-// MCP API with MCP Protocol enabled
-resource mcpApi 'Microsoft.ApiManagement/service/apis@2024-06-01-preview' = {
+// MCP API - routes to multi-region backend pool
+resource mcpApi 'Microsoft.ApiManagement/service/apis@2022-08-01' = {
   parent: apim
   name: 'bing-grounding-mcp'
   properties: {
@@ -72,11 +72,6 @@ resource mcpApi 'Microsoft.ApiManagement/service/apis@2024-06-01-preview' = {
     path: 'mcp'
     protocols: ['https']
     subscriptionRequired: false
-    type: 'mcp'
-    mcpProperties: {
-      backendId: backendPool.id
-      transportType: 'streamableHttp'
-    }
   }
 }
 
