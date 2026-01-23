@@ -532,6 +532,9 @@ jobs:
       name: production-primary
     
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
@@ -539,40 +542,30 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Update APIM Backend Pool
+      - name: Deploy APIM API and Backends
         run: |
-          echo "🔄 Updating APIM backend pool configuration..."
+          echo "🔄 Deploying APIM API configuration via Bicep..."
           
           RG="rg-bing-grounding-mcp-prod"
           APIM_NAME="apim-52hltr3kdvkvo"
-          SUB_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-          BASE_URI="https://management.azure.com/subscriptions/${SUB_ID}/resourceGroups/${RG}/providers/Microsoft.ApiManagement/service/${APIM_NAME}"
           
           PRIMARY_URL="https://${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}.azurewebsites.net"
-          SECONDARY_URL="https://${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}.azurewebsites.net"
+          SECONDARY_URL="${{ vars.AZURE_WEBAPP_NAME_SECONDARY && format('https://{0}.azurewebsites.net', vars.AZURE_WEBAPP_NAME_SECONDARY) || '' }}"
           
-          # Update primary backend
-          echo "📍 Updating primary backend: $PRIMARY_URL"
-          az rest --method PUT \
-            --uri "${BASE_URI}/backends/primary-backend?api-version=2022-08-01" \
-            --body "{\"properties\":{\"url\":\"${PRIMARY_URL}\",\"protocol\":\"http\"}}"
+          echo "📍 Primary backend: $PRIMARY_URL"
+          echo "📍 Secondary backend: $SECONDARY_URL"
+          echo "📍 APIM: $APIM_NAME"
           
-          # Update secondary backend (only if configured)
-          if [ -n "${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}" ]; then
-            echo "📍 Updating secondary backend: $SECONDARY_URL"
-            az rest --method PUT \
-              --uri "${BASE_URI}/backends/secondary-backend?api-version=2022-08-01" \
-              --body "{\"properties\":{\"url\":\"${SECONDARY_URL}\",\"protocol\":\"http\"}}"
-          fi
+          az deployment group create \
+            --resource-group "$RG" \
+            --template-file infra/apim/api.bicep \
+            --parameters \
+              apimName="$APIM_NAME" \
+              primaryBackendUrl="$PRIMARY_URL" \
+              secondaryBackendUrl="$SECONDARY_URL" \
+            --name "apim-api-$(date +%Y%m%d%H%M%S)"
           
-          # Ensure backend pool exists with correct configuration
-          echo "📍 Ensuring backend pool configuration..."
-          POOL_BODY='{"properties":{"type":"Pool","pool":{"services":[{"id":"/backends/primary-backend","priority":1,"weight":1},{"id":"/backends/secondary-backend","priority":2,"weight":1}]}}}'
-          az rest --method PUT \
-            --uri "${BASE_URI}/backends/multi-region-pool?api-version=2023-09-01-preview" \
-            --body "$POOL_BODY"
-          
-          echo "✅ APIM backend pool updated successfully"
+          echo "✅ APIM API and backends deployed successfully"
 
   summary:
     name: Deployment Summary
