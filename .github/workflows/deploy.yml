@@ -521,9 +521,62 @@ jobs:
             sleep 5
           done
 
+  update-apim:
+    name: Update APIM Backend Pool
+    needs: [deploy-primary, deploy-secondary]
+    runs-on: ubuntu-latest
+    if: |
+      always() && 
+      (needs.deploy-primary.result == 'success' || needs.deploy-secondary.result == 'success')
+    environment:
+      name: production-primary
+    
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Update APIM Backend Pool
+        run: |
+          echo "🔄 Updating APIM backend pool configuration..."
+          
+          RG="rg-bing-grounding-mcp-prod"
+          APIM_NAME="apim-52hltr3kdvkvo"
+          SUB_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          BASE_URI="https://management.azure.com/subscriptions/${SUB_ID}/resourceGroups/${RG}/providers/Microsoft.ApiManagement/service/${APIM_NAME}"
+          
+          PRIMARY_URL="https://${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}.azurewebsites.net"
+          SECONDARY_URL="https://${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}.azurewebsites.net"
+          
+          # Update primary backend
+          echo "📍 Updating primary backend: $PRIMARY_URL"
+          az rest --method PUT \
+            --uri "${BASE_URI}/backends/primary-backend?api-version=2022-08-01" \
+            --body "{\"properties\":{\"url\":\"${PRIMARY_URL}\",\"protocol\":\"http\"}}"
+          
+          # Update secondary backend (only if configured)
+          if [ -n "${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}" ]; then
+            echo "📍 Updating secondary backend: $SECONDARY_URL"
+            az rest --method PUT \
+              --uri "${BASE_URI}/backends/secondary-backend?api-version=2022-08-01" \
+              --body "{\"properties\":{\"url\":\"${SECONDARY_URL}\",\"protocol\":\"http\"}}"
+          fi
+          
+          # Ensure backend pool exists with correct configuration
+          echo "📍 Ensuring backend pool configuration..."
+          POOL_BODY='{"properties":{"type":"Pool","pool":{"services":[{"id":"/backends/primary-backend","priority":1,"weight":1},{"id":"/backends/secondary-backend","priority":2,"weight":1}]}}}'
+          az rest --method PUT \
+            --uri "${BASE_URI}/backends/multi-region-pool?api-version=2023-09-01-preview" \
+            --body "$POOL_BODY"
+          
+          echo "✅ APIM backend pool updated successfully"
+
   summary:
     name: Deployment Summary
-    needs: [deploy-primary, deploy-secondary]
+    needs: [deploy-primary, deploy-secondary, update-apim]
     runs-on: ubuntu-latest
     if: always()
 
@@ -532,7 +585,8 @@ jobs:
         run: |
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Region | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Primary | ${{ needs.deploy-primary.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Secondary | ${{ needs.deploy-secondary.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Primary Region | ${{ needs.deploy-primary.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Secondary Region | ${{ needs.deploy-secondary.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| APIM Backend Pool | ${{ needs.update-apim.result }} |" >> $GITHUB_STEP_SUMMARY
