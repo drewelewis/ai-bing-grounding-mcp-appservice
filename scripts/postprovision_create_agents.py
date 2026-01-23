@@ -155,6 +155,23 @@ def set_env_value(key: str, value: str):
     with open(env_file, 'w', encoding='utf-8') as f:
         f.writelines(lines)
 
+def load_agents_config() -> dict:
+    """Load agent pool configuration from agents.config.json."""
+    import json
+    config_paths = [
+        Path("agents.config.json"),
+        Path("./agents.config.json"),
+        Path(__file__).parent.parent / "agents.config.json"
+    ]
+    
+    for config_path in config_paths:
+        if config_path.exists():
+            with open(config_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    
+    print("⚠️ Warning: agents.config.json not found, using defaults")
+    return {}
+
 def main():
     """Create Bing grounding agents."""
     print("🤖 Creating Bing Grounding Agent Pools...")
@@ -180,37 +197,38 @@ def main():
     # Bing connection ID - optional for now (connection can be created later)
     bing_connection_id = get_env_value("AZURE_BING_CONNECTION_ID")
     
-    # Model configurations (ONLY officially supported models for Bing grounding)
-    # GPT-4o, GPT-4, GPT-3.5-Turbo are the ONLY verified models per Microsoft docs
-    # GPT-4.1 REMOVED - not a real model
-    # GPT-5 series REMOVED - does not support Bing grounding tool (uses Responses API only)
-    # o-series REMOVED - reasoning models use different API
-    # NOTE: pool_size_env must match camelCase parameter names in .azure/{env}/.env
-    # 
-    # MULTI-REGION NOTE: Use 1 agent per model per region.
-    # Regional APIM routing provides throughput scaling, not agent pooling.
-    model_configs = [
-        # GPT-4o series - recommended: 1 per region
-        {"name": "gpt-4o", "key": "GPT4O", "pool_size_env": "agentPoolSizeGpt4o", "default_size": 1},
-        
-        # GPT-4.1-mini - recommended: 1 per region  
-        {"name": "gpt-4.1-mini", "key": "GPT41_MINI", "pool_size_env": "agentPoolSizeGpt41Mini", "default_size": 1},
-        
-        # GPT-4 series - optional
-        {"name": "gpt-4", "key": "GPT4", "pool_size_env": "agentPoolSizeGpt4", "default_size": 0},
-        {"name": "gpt-4-turbo", "key": "GPT4_TURBO", "pool_size_env": "agentPoolSizeGpt4Turbo", "default_size": 0},
-        
-        # GPT-3.5 series - optional
-        {"name": "gpt-35-turbo", "key": "GPT35_TURBO", "pool_size_env": "agentPoolSizeGpt35Turbo", "default_size": 0},
-    ]
+    # Load configuration from agents.config.json
+    agents_config = load_agents_config()
+    models_config = agents_config.get("models", {})
     
-    # Read pool sizes from environment
-    for config in model_configs:
-        pool_size_str = get_env_value(config["pool_size_env"])
-        try:
-            config["pool_size"] = int(pool_size_str) if pool_size_str else config["default_size"]
-        except ValueError:
-            config["pool_size"] = config["default_size"]
+    # Model configurations - read from agents.config.json
+    # Map config keys to model IDs
+    model_mapping = {
+        "gpt4o": {"name": "gpt-4o", "key": "GPT4O"},
+        "gpt41mini": {"name": "gpt-4.1-mini", "key": "GPT41_MINI"},
+        "gpt4": {"name": "gpt-4", "key": "GPT4"},
+        "gpt35turbo": {"name": "gpt-35-turbo", "key": "GPT35_TURBO"},
+    }
+    
+    model_configs = []
+    for config_key, mapping in model_mapping.items():
+        model_info = models_config.get(config_key, {})
+        if model_info.get("enabled", False):
+            pool_size = model_info.get("agentPoolSize", 0)
+            if pool_size > 0:
+                model_configs.append({
+                    "name": model_info.get("modelId", mapping["name"]),
+                    "key": mapping["key"],
+                    "pool_size": pool_size
+                })
+    
+    # Fallback to hardcoded defaults if no config found
+    if not model_configs:
+        print("⚠️ No models enabled in config, using defaults")
+        model_configs = [
+            {"name": "gpt-4o", "key": "GPT4O", "pool_size": 1},
+            {"name": "gpt-4.1-mini", "key": "GPT41_MINI", "pool_size": 1},
+        ]
     
     total_agents = sum(c["pool_size"] for c in model_configs)
     

@@ -249,6 +249,24 @@ jobs:
           AZURE_BING_CONNECTION_ID: ${{ steps.resources.outputs.bing_connection_id }}
           AZURE_RESOURCE_GROUP: rg-bing-grounding-mcp-prod
 
+      - name: Refresh agents in App Service
+        run: |
+          echo "Triggering agent refresh in App Service..."
+          REFRESH_URL="https://${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}.azurewebsites.net/admin/refresh"
+          
+          for i in {1..3}; do
+            response=$(curl -s -X POST "$REFRESH_URL" -H "Content-Type: application/json" || echo '{"error":"request failed"}')
+            echo "Refresh response: $response"
+            
+            if echo "$response" | grep -q '"status"'; then
+              echo "✅ Agent refresh triggered successfully!"
+              break
+            fi
+            
+            echo "Attempt $i failed, retrying in 5 seconds..."
+            sleep 5
+          done
+
   deploy-secondary:
     name: Deploy to Secondary Region
     needs: build
@@ -368,6 +386,24 @@ jobs:
           AZURE_AI_PROJECT_NAME: ${{ steps.resources.outputs.project_name }}
           AZURE_BING_CONNECTION_ID: ${{ steps.resources.outputs.bing_connection_id }}
           AZURE_RESOURCE_GROUP: rg-bing-grounding-mcp-prod-secondary
+
+      - name: Refresh agents in App Service
+        run: |
+          echo "Triggering agent refresh in App Service..."
+          REFRESH_URL="https://${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}.azurewebsites.net/admin/refresh"
+          
+          for i in {1..3}; do
+            response=$(curl -s -X POST "$REFRESH_URL" -H "Content-Type: application/json" || echo '{"error":"request failed"}')
+            echo "Refresh response: $response"
+            
+            if echo "$response" | grep -q '"status"'; then
+              echo "✅ Agent refresh triggered successfully!"
+              break
+            fi
+            
+            echo "Attempt $i failed, retrying in 5 seconds..."
+            sleep 5
+          done
 
   summary:
     name: Deployment Summary
