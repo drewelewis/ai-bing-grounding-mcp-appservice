@@ -182,7 +182,7 @@ graph TB
 
 ## Agent Configuration & Traffic Splitting
 
-Agents are configured in `agents.config.json`. Each agent is defined individually with its own traffic weight, enabling sophisticated deployment patterns like blue/green and canary releases.
+Agents are configured in `agents.config.yaml`. Each agent is defined individually with its own traffic weight, enabling sophisticated deployment patterns like blue/green and canary releases.
 
 ### Configuration File
 
@@ -323,7 +323,7 @@ Request → /bing-grounding?model=gpt-4o
 On each deployment (`azd up` or CI/CD):
 
 1. **Existing agents deleted**: All agents matching `agent_bing_*` pattern are removed
-2. **New agents created**: Fresh agents created from `agents.config.json`
+2. **New agents created**: Fresh agents created from `agents.config.yaml`
 3. **App refreshed**: `/admin/refresh` called to load new agents
 
 This ensures the deployed state always matches your configuration file.
@@ -785,7 +785,7 @@ For deployment protection rules, create environments:
 
 #### Agent Configuration
 
-Agents are configured via `agents.config.json` (checked into repo) and created/updated during app deployment:
+Agents are configured via `agents.config.yaml` (checked into repo) and created/updated during app deployment:
 
 ```json
 {
@@ -797,7 +797,7 @@ Agents are configured via `agents.config.json` (checked into repo) and created/u
 ```
 
 **This enables:**
-- ✅ Change `agents.config.json` → Push → Agents updated automatically
+- ✅ Change `agents.config.yaml` → Push → Agents updated automatically
 - ✅ Change prompts or weights during deploy
 - ✅ Different agent configs per environment
 

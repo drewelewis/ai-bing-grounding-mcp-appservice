@@ -239,7 +239,7 @@ jobs:
 
       - name: Deploy required models
         run: |
-          echo "Deploying models from agents.config.json..."
+          echo "Deploying models from agents.config.yaml..."
           python scripts/postprovision_deploy_models.py
         env:
           AZURE_FOUNDRY_NAME: ${{ steps.resources.outputs.foundry_name }}
@@ -285,7 +285,7 @@ jobs:
 
       - name: Configure agents
         run: |
-          echo "Configuring agents from agents.config.json..."
+          echo "Configuring agents from agents.config.yaml..."
           python scripts/postprovision_create_agents.py
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
@@ -424,7 +424,7 @@ jobs:
 
       - name: Deploy required models
         run: |
-          echo "Deploying models from agents.config.json..."
+          echo "Deploying models from agents.config.yaml..."
           python scripts/postprovision_deploy_models.py
         env:
           AZURE_FOUNDRY_NAME: ${{ steps.resources.outputs.foundry_name }}
@@ -469,7 +469,7 @@ jobs:
 
       - name: Configure agents
         run: |
-          echo "Configuring agents from agents.config.json..."
+          echo "Configuring agents from agents.config.yaml..."
           python scripts/postprovision_create_agents.py
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}

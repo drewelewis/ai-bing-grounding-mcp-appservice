@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Deploy AI Foundry model deployments based on agents.config.json.
+Deploy AI Foundry model deployments based on agents.config.yaml.
 
-This script reads the models section from agents.config.json and ensures
+This script reads the models section from agents.config.yaml and ensures
 the required model deployments exist in Azure AI Foundry.
 
 Usage:
@@ -12,6 +12,7 @@ import os
 import sys
 import subprocess
 import json
+import yaml
 from pathlib import Path
 
 # Set UTF-8 encoding for Windows console
@@ -53,19 +54,19 @@ def get_env_value(key: str) -> str:
 
 
 def load_agents_config() -> dict:
-    """Load configuration from agents.config.json."""
+    """Load configuration from agents.config.yaml."""
     config_paths = [
-        Path("agents.config.json"),
-        Path("./agents.config.json"),
-        Path(__file__).parent.parent / "agents.config.json"
+        Path("agents.config.yaml"),
+        Path("./agents.config.yaml"),
+        Path(__file__).parent.parent / "agents.config.yaml"
     ]
     
     for config_path in config_paths:
         if config_path.exists():
             with open(config_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                return yaml.safe_load(f)
     
-    print("⚠️ Warning: agents.config.json not found")
+    print("⚠️ Warning: agents.config.yaml not found")
     return {}
 
 

@@ -1,0 +1,250 @@
+# =============================================================================
+# Agent and Model Configuration
+# =============================================================================
+# Models are auto-deployed based on agent requirements.
+# Capacity is in thousands of tokens per minute (TPM). 
+# Example: capacity: 10 means 10K TPM.
+
+# =============================================================================
+# MODELS
+# =============================================================================
+# Only models referenced by enabled agents will be deployed.
+# Set enabled: true to force deployment even if no agent uses it.
+
+models:
+  gpt-4.1:
+    enabled: true
+    sku: GlobalStandard
+    capacity: 50                    # Valid range: 1-1000 K TPM
+    version: "2025-04-14"
+    # GPT-4.1 - Latest flagship model with superior reasoning
+    # Recommended capacity: dev=10, staging=50, production=150
+    # Supports: Agents ✓, Bing Grounding ✓
+
+  gpt-4.1-mini:
+    enabled: true
+    sku: GlobalStandard
+    capacity: 50                    # Valid range: 1-2000 K TPM
+    version: "2025-04-14"
+    # GPT-4.1-mini - Balanced performance and cost, great for most tasks
+    # Recommended capacity: dev=10, staging=50, production=200
+    # Supports: Agents ✓, Bing Grounding ✓
+
+  gpt-4.1-nano:
+    enabled: true
+    sku: GlobalStandard
+    capacity: 100                   # Valid range: 1-4000 K TPM
+    version: "2025-04-14"
+    # GPT-4.1-nano - Fastest and most cost-effective, ideal for high-volume
+    # Recommended capacity: dev=20, staging=100, production=500
+    # Supports: Agents ✓, Bing Grounding ✓
+
+  gpt-4o:
+    enabled: true
+    sku: GlobalStandard
+    capacity: 50                    # Valid range: 1-1000 K TPM
+    version: "2024-11-20"
+    # GPT-4o - Multimodal model with vision, audio, and text capabilities
+    # Recommended capacity: dev=10, staging=50, production=150
+    # Supports: Agents ✓, Bing Grounding ✓
+
+# =============================================================================
+# AGENTS
+# =============================================================================
+# Each agent is created in Azure AI Foundry with its own configuration.
+# Traffic is routed based on weights within each model group.
+#
+# Traffic Splitting Examples:
+#   - Blue/Green: agent_v1 weight=0, agent_v2 weight=100
+#   - Canary: agent_stable weight=90, agent_canary weight=10
+#   - A/B Test: agent_a weight=50, agent_b weight=50
+
+agents:
+  # --- GPT-4.1 Agents (Flagship) ---
+  - name: gpt41_1
+    model: gpt-4.1
+    weight: 90                      # Gets 90% of gpt-4.1 traffic
+    enabled: true
+    description: GPT-4.1 flagship agent with Bing grounding for web search
+    temperature: 0.7
+    top_p: null
+    tools:
+      - bing_grounding
+    instructions: |
+      You are a web search assistant with ONE RULE: Never answer without searching first.
+
+      For every query, you MUST:
+      - Call Bing Search tool BEFORE answering (mandatory step)
+      - Base your entire response on search results only
+      - Include citations [1], [2] for all facts
+
+      FORBIDDEN: Answering from memory or training data. Search is required for ALL queries.
+    metadata:
+      environment: production
+      version: "1.0"
+
+  - name: gpt41_2
+    model: gpt-4.1
+    weight: 10                      # Gets 10% of gpt-4.1 traffic (canary)
+    enabled: true
+    description: GPT-4.1 flagship agent with Bing grounding for web search
+    temperature: 0.7
+    top_p: null
+    tools:
+      - bing_grounding
+    instructions: |
+      You are a web search assistant with ONE RULE: Never answer without searching first.
+
+      For every query, you MUST:
+      - Call Bing Search tool BEFORE answering (mandatory step)
+      - Base your entire response on search results only
+      - Include citations [1], [2] for all facts
+
+      FORBIDDEN: Answering from memory or training data. Search is required for ALL queries.
+    metadata:
+      environment: production
+      version: "1.0"
+
+  # --- GPT-4.1-mini Agents (Balanced) ---
+  - name: gpt41mini_1
+    model: gpt-4.1-mini
+    weight: 90                      # Gets 90% of gpt-4.1-mini traffic
+    enabled: true
+    description: GPT-4.1-mini agent with Bing grounding for web search
+    temperature: 0.5
+    top_p: null
+    tools:
+      - bing_grounding
+    instructions: |
+      You are a web search assistant. Use Bing Search to find current 
+      information before answering. Include citations for all facts.
+    metadata:
+      environment: production
+      tier: balanced
+
+  - name: gpt41mini_2
+    model: gpt-4.1-mini
+    weight: 10                      # Gets 10% of gpt-4.1-mini traffic (canary)
+    enabled: true
+    description: GPT-4.1-mini agent with Bing grounding for web search
+    temperature: 0.5
+    top_p: null
+    tools:
+      - bing_grounding
+    instructions: |
+      You are a web search assistant. Use Bing Search to find current 
+      information before answering. Include citations for all facts.
+    metadata:
+      environment: production
+      tier: balanced
+
+  # --- GPT-4.1-nano Agents (Economy) ---
+  - name: gpt41nano_1
+    model: gpt-4.1-nano
+    weight: 90                      # Gets 90% of gpt-4.1-nano traffic
+    enabled: true
+    description: GPT-4.1-nano cost-effective agent with Bing grounding
+    temperature: 0.5
+    top_p: null
+    tools:
+      - bing_grounding
+    instructions: |
+      You are a web search assistant. Use Bing Search to find current 
+      information before answering. Include citations for all facts.
+    metadata:
+      environment: production
+      tier: economy
+
+  - name: gpt41nano_2
+    model: gpt-4.1-nano
+    weight: 10                      # Gets 10% of gpt-4.1-nano traffic (canary)
+    enabled: true
+    description: GPT-4.1-nano cost-effective agent with Bing grounding
+    temperature: 0.5
+    top_p: null
+    tools:
+      - bing_grounding
+    instructions: |
+      You are a web search assistant. Use Bing Search to find current 
+      information before answering. Include citations for all facts.
+    metadata:
+      environment: production
+      tier: economy
+
+  # --- GPT-4o Agents (Multimodal) ---
+  - name: gpt4o_1
+    model: gpt-4o
+    weight: 90                      # Gets 90% of gpt-4o traffic
+    enabled: true
+    description: GPT-4o multimodal agent with Bing grounding for web search
+    temperature: 0.7
+    top_p: null
+    tools:
+      - bing_grounding
+    instructions: |
+      You are a web search assistant with ONE RULE: Never answer without searching first.
+
+      For every query, you MUST:
+      - Call Bing Search tool BEFORE answering (mandatory step)
+      - Base your entire response on search results only
+      - Include citations [1], [2] for all facts
+
+      FORBIDDEN: Answering from memory or training data. Search is required for ALL queries.
+    metadata:
+      environment: production
+      version: "1.0"
+
+  - name: gpt4o_2
+    model: gpt-4o
+    weight: 10                      # Gets 10% of gpt-4o traffic (canary)
+    enabled: true
+    description: GPT-4o multimodal agent with Bing grounding for web search
+    temperature: 0.7
+    top_p: null
+    tools:
+      - bing_grounding
+    instructions: |
+      You are a web search assistant with ONE RULE: Never answer without searching first.
+
+      For every query, you MUST:
+      - Call Bing Search tool BEFORE answering (mandatory step)
+      - Base your entire response on search results only
+      - Include citations [1], [2] for all facts
+
+      FORBIDDEN: Answering from memory or training data. Search is required for ALL queries.
+    metadata:
+      environment: production
+      version: "1.0"
+
+# =============================================================================
+# TOOL DEFINITIONS
+# =============================================================================
+# Available tools that can be assigned to agents.
+
+toolDefinitions:
+  bing_grounding:
+    type: bing_grounding
+    description: Bing web search for real-time information
+
+  code_interpreter:
+    type: code_interpreter
+    description: Execute Python code in a sandboxed environment
+
+  file_search:
+    type: file_search
+    description: Search uploaded files and vector stores
+
+# =============================================================================
+# DEFAULTS
+# =============================================================================
+# Default values applied to agents when not explicitly specified.
+
+defaults:
+  routePrefix: /bing-grounding
+  temperature: 0.7
+  top_p: null
+  tools:
+    - bing_grounding
+  instructions: |
+    You are a web search assistant. Use Bing Search to find current 
+    information before answering. Include citations for all facts.

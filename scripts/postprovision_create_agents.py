@@ -156,20 +156,20 @@ def set_env_value(key: str, value: str):
         f.writelines(lines)
 
 def load_agents_config() -> dict:
-    """Load agent pool configuration from agents.config.json."""
-    import json
+    """Load agent pool configuration from agents.config.yaml."""
+    import yaml
     config_paths = [
-        Path("agents.config.json"),
-        Path("./agents.config.json"),
-        Path(__file__).parent.parent / "agents.config.json"
+        Path("agents.config.yaml"),
+        Path("./agents.config.yaml"),
+        Path(__file__).parent.parent / "agents.config.yaml"
     ]
     
     for config_path in config_paths:
         if config_path.exists():
             with open(config_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                return yaml.safe_load(f)
     
-    print("⚠️ Warning: agents.config.json not found, using defaults")
+    print("⚠️ Warning: agents.config.yaml not found, using defaults")
     return {}
 
 def main():
