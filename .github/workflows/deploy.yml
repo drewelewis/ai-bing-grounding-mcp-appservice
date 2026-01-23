@@ -187,7 +187,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install azure-identity azure-ai-projects
+        run: pip install azure-identity azure-ai-projects pyyaml
 
       # Note: Service principal role assignments are handled in deploy-infra.yml
       # The Azure AI Developer role is required for Agents API access
@@ -377,7 +377,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install azure-identity azure-ai-projects
+        run: pip install azure-identity azure-ai-projects pyyaml
 
       # Note: Service principal role assignments are handled in deploy-infra.yml
 
