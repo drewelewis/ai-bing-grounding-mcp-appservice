@@ -166,17 +166,133 @@ graph TB
 
 **Characteristics:**
 - ✅ **Multi-Region:** 2 App Service instances for high availability
+- ✅ **Active/Active Load Balancing:** Round-robin distribution across regions
 - ✅ **Model Selection:** API caller chooses which model to use
 - ✅ **TPM Capacity:** 40K TPM total (20K per region: 10K GPT-4o + 10K GPT-4.1-mini)
 - ✅ **Agent Pool:** 8 agents total (4 per region: 2 per model)
 - ✅ **Centralized APIM:** Single API Management in primary region
-- ✅ **Health-Based Routing:** APIM routes to healthy backends
-- ✅ **Automatic Failover:** Traffic shifts to secondary on primary failure
+- ✅ **Per-Model Failover:** 503 response triggers automatic retry on another region
+- ✅ **Aggregated Endpoints:** `/health` and `/agents` show data from all regions
 - ✅ **Managed Identity:** Secure authentication per region
 
 **Use Case:** Production workloads requiring high availability, model choice, and regional redundancy
 
 **Monthly Cost:** ~$2,000 (See [Cost Analysis](#cost-analysis) below)
+
+---
+
+## Multi-Region Routing & Failover
+
+### Active/Active Load Balancing
+
+APIM distributes requests across both regions using round-robin (50/50 split). Each region independently manages its agents and traffic weights.
+
+```
+                    ┌──────────────┐
+                    │     APIM     │
+                    │  Round-Robin │
+                    └──────┬───────┘
+                           │
+              ┌────────────┴────────────┐
+              ▼                         ▼
+    ┌─────────────────┐       ┌─────────────────┐
+    │   Region 1      │       │   Region 2      │
+    │   (East US 2)   │       │   (West US 2)   │
+    │                 │       │                 │
+    │ gpt-4o: 50/50   │       │ gpt-4o: 0/0     │
+    │ gpt-4.1: 50/50  │       │ gpt-4.1: 50/50  │
+    └─────────────────┘       └─────────────────┘
+```
+
+### Per-Model Failover with 503
+
+When a model has all agents with weight 0 in a region, the service returns HTTP 503. APIM automatically retries on the other region.
+
+**Scenario:**
+- Region 1: gpt-4o at 50/50 weights (active)
+- Region 2: gpt-4o at 0/0 weights (inactive)
+
+**Request flow:**
+1. Request for `gpt-4o` arrives at APIM
+2. APIM routes to Region 2 (round-robin)
+3. Region 2 returns `503 Service Unavailable` (no active gpt-4o agents)
+4. APIM retries on Region 1
+5. Region 1 handles request successfully ✅
+
+This enables **per-model blue/green deployments** across regions:
+- Disable a model in Region 2 → test new version
+- Enable in Region 2, disable in Region 1 → gradual cutover
+
+### Health Endpoint with Per-Model Status
+
+The `/health` endpoint shows status for each model:
+
+```json
+{
+  "status": "partial",
+  "service": "bing-grounding-api",
+  "region": "eastus2",
+  "agents_loaded": 6,
+  "active_models": 2,
+  "total_models": 3,
+  "models": {
+    "gpt-4o": {
+      "status": "active",
+      "agents": 2,
+      "active_agents": 2,
+      "total_weight": 100
+    },
+    "gpt-4.1-mini": {
+      "status": "active",
+      "agents": 2,
+      "active_agents": 2,
+      "total_weight": 100
+    },
+    "gpt-4.1-nano": {
+      "status": "inactive",
+      "agents": 2,
+      "active_agents": 0,
+      "total_weight": 0
+    }
+  }
+}
+```
+
+**Status values:**
+- `ok` - All models have active agents
+- `partial` - Some models have active agents
+- `inactive` - No models have active agents
+
+### Aggregated APIM Endpoints
+
+APIM provides aggregated views that combine data from all regions:
+
+**`/bing-grounding/health`** - Combined health from all regions:
+```json
+{
+  "status": "healthy",
+  "healthy_regions": 2,
+  "total_regions": 2,
+  "regions": [
+    {"region": "eastus2", "status": "ok", "agents_loaded": 6},
+    {"region": "westus2", "status": "ok", "agents_loaded": 6}
+  ],
+  "mode": "active-active"
+}
+```
+
+**`/bing-grounding/agents`** - All agents from all regions:
+```json
+{
+  "total": 12,
+  "regions": ["eastus2", "westus2"],
+  "agents": [
+    {"route": "/bing-grounding/gpt4o_1", "model": "gpt-4o", "weight": 50, "region": "eastus2"},
+    {"route": "/bing-grounding/gpt4o_1", "model": "gpt-4o", "weight": 50, "region": "westus2"},
+    ...
+  ]
+}
+```
 
 ---
 

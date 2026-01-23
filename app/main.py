@@ -117,13 +117,59 @@ async def health_check():
     """
     Health check endpoint.
     Returns 200 OK if the service is running.
+    Shows per-model status for multi-region routing decisions.
     """
+    # Calculate per-model status
+    models_status = {}
+    for route, info in AGENTS.items():
+        model = info["model"]
+        weight = info.get("weight", 100)
+        
+        if model not in models_status:
+            models_status[model] = {
+                "agents": 0,
+                "active_agents": 0,
+                "total_weight": 0
+            }
+        
+        models_status[model]["agents"] += 1
+        models_status[model]["total_weight"] += weight
+        if weight > 0:
+            models_status[model]["active_agents"] += 1
+    
+    # Determine status per model
+    models_detail = {}
+    active_models = 0
+    for model, stats in models_status.items():
+        if stats["total_weight"] > 0:
+            status = "active"
+            active_models += 1
+        else:
+            status = "inactive"
+        
+        models_detail[model] = {
+            "status": status,
+            "agents": stats["agents"],
+            "active_agents": stats["active_agents"],
+            "total_weight": stats["total_weight"]
+        }
+    
+    # Overall status
+    if active_models == len(models_status):
+        overall_status = "ok"
+    elif active_models > 0:
+        overall_status = "partial"
+    else:
+        overall_status = "inactive"
+    
     return {
-        "status": "ok",
+        "status": overall_status,
         "service": "bing-grounding-api",
         "region": AZURE_REGION,
         "agents_loaded": len(AGENTS),
-        "agents": list(AGENTS.keys())
+        "active_models": active_models,
+        "total_models": len(models_status),
+        "models": models_detail
     }
 
 
@@ -278,6 +324,7 @@ def select_agent_by_weight(model: str) -> str:
     Uses weighted random selection:
     - Agents with weight 0 are excluded
     - Agents with higher weights get more traffic
+    - Returns 503 if no active agents (triggers APIM failover to another region)
     
     Args:
         model: Model name (e.g., "gpt-4o", "gpt-4.1-mini")
@@ -286,7 +333,8 @@ def select_agent_by_weight(model: str) -> str:
         Agent route (e.g., "gpt4o_1")
         
     Raises:
-        HTTPException if no agents available for the model
+        HTTPException 503 if no active agents for model (allows APIM retry)
+        HTTPException 404 if model doesn't exist at all
     """
     # Find all agents for this model with weight > 0
     model_agents = [
@@ -295,19 +343,33 @@ def select_agent_by_weight(model: str) -> str:
     ]
     
     if not model_agents:
-        # Fallback: try any agent for this model (even weight 0)
-        model_agents = [(route, info) for route, info in AGENTS.items() if info["model"] == model]
-        if not model_agents:
-            # Fallback to gpt-4o
-            model_agents = [
-                (route, info) for route, info in AGENTS.items() 
-                if info["model"] == "gpt-4o" and info.get("weight", 100) > 0
-            ]
-            if not model_agents:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No agents available for model '{model}' or fallback model 'gpt-4o'"
-                )
+        # Check if model exists but has no active agents (all weights 0)
+        all_model_agents = [(route, info) for route, info in AGENTS.items() if info["model"] == model]
+        
+        if all_model_agents:
+            # Model exists but all agents have weight 0 - return 503 for APIM failover
+            raise HTTPException(
+                status_code=503,
+                detail=f"No active agents for model '{model}' in region '{AZURE_REGION}'. "
+                       f"All {len(all_model_agents)} agents have weight 0. "
+                       f"Request may be retried on another region."
+            )
+        
+        # Model doesn't exist - try fallback to gpt-4o
+        fallback_agents = [
+            (route, info) for route, info in AGENTS.items() 
+            if info["model"] == "gpt-4o" and info.get("weight", 100) > 0
+        ]
+        
+        if fallback_agents:
+            model_agents = fallback_agents
+        else:
+            # No active gpt-4o agents either
+            raise HTTPException(
+                status_code=503,
+                detail=f"No active agents for model '{model}' or fallback 'gpt-4o' in region '{AZURE_REGION}'. "
+                       f"Request may be retried on another region."
+            )
     
     # If only one agent, return it directly
     if len(model_agents) == 1:
@@ -315,10 +377,6 @@ def select_agent_by_weight(model: str) -> str:
     
     # Weighted random selection
     total_weight = sum(info.get("weight", 100) for _, info in model_agents)
-    
-    if total_weight == 0:
-        # All weights are 0, pick randomly
-        return random.choice(model_agents)[0]
     
     roll = random.randint(1, total_weight)
     cumulative = 0
