@@ -13,7 +13,7 @@
 
 models:
   gpt-4.1:
-    enabled: true
+    enabled: false                  # DISABLED - No quota available (1450K/1450K used)
     sku: GlobalStandard
     capacity: 50                    # Valid range: 1-1000 K TPM
     version: "2025-04-14"
@@ -64,7 +64,7 @@ agents:
   - name: gpt41_1
     model: gpt-4.1
     weight: 90                      # Gets 90% of gpt-4.1 traffic
-    enabled: true
+    enabled: false                  # DISABLED - No quota available
     description: GPT-4.1 flagship agent with Bing grounding for web search
     temperature: 0.7
     top_p: null
@@ -86,7 +86,7 @@ agents:
   - name: gpt41_2
     model: gpt-4.1
     weight: 10                      # Gets 10% of gpt-4.1 traffic (canary)
-    enabled: true
+    enabled: false                  # DISABLED - No quota available
     description: GPT-4.1 flagship agent with Bing grounding for web search
     temperature: 0.7
     top_p: null
