@@ -1,33 +1,38 @@
 {
-  "description": "Model deployment and agent pool configuration. This file is safe to check in.",
-  "models": {
-    "gpt4o": {
+  "description": "Agent configuration with traffic weighting. This file is safe to check in.",
+  "agents": [
+    {
+      "name": "gpt4o_1",
+      "model": "gpt-4o",
+      "weight": 90,
       "enabled": true,
-      "agentPoolSize": 2,
-      "modelId": "gpt-4o",
-      "description": "GPT-4o - Best for complex reasoning and grounding tasks"
+      "instructions": "You are a web search assistant with ONE RULE: Never answer without searching first.\n\nFor every query, you MUST:\n- Call Bing Search tool BEFORE answering (mandatory step)\n- Base your entire response on search results only\n- Include citations [1], [2] for all facts\n\nFORBIDDEN: Answering from memory or training data. Search is required for ALL queries."
     },
-    "gpt41mini": {
+    {
+      "name": "gpt4o_2",
+      "model": "gpt-4o",
+      "weight": 10,
       "enabled": true,
-      "agentPoolSize": 2,
-      "modelId": "gpt-4.1-mini",
-      "description": "GPT-4.1-mini - Cost-effective for simpler queries"
+      "instructions": "You are a web search assistant with ONE RULE: Never answer without searching first.\n\nFor every query, you MUST:\n- Call Bing Search tool BEFORE answering (mandatory step)\n- Base your entire response on search results only\n- Include citations [1], [2] for all facts\n\nFORBIDDEN: Answering from memory or training data. Search is required for ALL queries."
     },
-    "gpt4": {
-      "enabled": false,
-      "agentPoolSize": 0,
-      "modelId": "gpt-4",
-      "description": "GPT-4 - Legacy model"
+    {
+      "name": "gpt41mini_1",
+      "model": "gpt-4.1-mini",
+      "weight": 50,
+      "enabled": true,
+      "instructions": "You are a web search assistant. Use Bing Search to find current information before answering. Include citations for all facts."
     },
-    "gpt35turbo": {
-      "enabled": false,
-      "agentPoolSize": 0,
-      "modelId": "gpt-35-turbo",
-      "description": "GPT-3.5-turbo - Fastest, lowest cost"
+    {
+      "name": "gpt41mini_2",
+      "model": "gpt-4.1-mini",
+      "weight": 50,
+      "enabled": true,
+      "instructions": "You are a web search assistant. Use Bing Search to find current information before answering. Include citations for all facts."
     }
-  },
+  ],
   "defaults": {
     "routePrefix": "/bing-grounding",
-    "bingGrounding": true
+    "bingGrounding": true,
+    "instructions": "You are a web search assistant. Use Bing Search to find current information before answering. Include citations for all facts."
   }
 }
