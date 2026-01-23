@@ -350,15 +350,34 @@ def main():
                     )
                 )
                 
+                # Get optional parameters from config
+                temperature = agent_cfg.get("temperature")
+                top_p = agent_cfg.get("top_p")
+                description = agent_cfg.get("description", "Agent with Bing grounding for real-time web search")
+                
+                # Build metadata - include weight and any custom metadata
+                agent_metadata = {"weight": str(weight)}
+                custom_metadata = agent_cfg.get("metadata", {})
+                agent_metadata.update(custom_metadata)
+                
+                # Build create_agent kwargs
+                create_kwargs = {
+                    "model": model_name,
+                    "name": agent_name,
+                    "instructions": instructions,
+                    "tools": [bing_tool],
+                    "description": description,
+                    "metadata": agent_metadata
+                }
+                
+                # Add optional parameters only if specified
+                if temperature is not None:
+                    create_kwargs["temperature"] = temperature
+                if top_p is not None:
+                    create_kwargs["top_p"] = top_p
+                
                 # Create agent
-                agent = project_client.agents.create_agent(
-                    model=model_name,
-                    name=agent_name,
-                    instructions=instructions,
-                    tools=[bing_tool],
-                    description="Agent with Bing grounding for real-time web search",
-                    metadata={"weight": str(weight)}
-                )
+                agent = project_client.agents.create_agent(**create_kwargs)
                 
                 created_agents.append({"id": agent.id, "name": agent_name, "model": model_name, "weight": weight})
                 print(f"✓ {agent.id}")

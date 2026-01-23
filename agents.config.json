@@ -1,38 +1,86 @@
 {
-  "description": "Agent configuration with traffic weighting. This file is safe to check in.",
+  "description": "Agent configuration with traffic weighting and model parameters. This file is safe to check in.",
   "agents": [
     {
       "name": "gpt4o_1",
       "model": "gpt-4o",
       "weight": 90,
       "enabled": true,
-      "instructions": "You are a web search assistant with ONE RULE: Never answer without searching first.\n\nFor every query, you MUST:\n- Call Bing Search tool BEFORE answering (mandatory step)\n- Base your entire response on search results only\n- Include citations [1], [2] for all facts\n\nFORBIDDEN: Answering from memory or training data. Search is required for ALL queries."
+      "description": "Primary GPT-4o agent with Bing grounding for web search",
+      "instructions": "You are a web search assistant with ONE RULE: Never answer without searching first.\n\nFor every query, you MUST:\n- Call Bing Search tool BEFORE answering (mandatory step)\n- Base your entire response on search results only\n- Include citations [1], [2] for all facts\n\nFORBIDDEN: Answering from memory or training data. Search is required for ALL queries.",
+      "temperature": 0.7,
+      "top_p": null,
+      "tools": ["bing_grounding"],
+      "metadata": {
+        "environment": "production",
+        "version": "1.0"
+      }
     },
     {
       "name": "gpt4o_2",
       "model": "gpt-4o",
       "weight": 10,
       "enabled": true,
-      "instructions": "You are a web search assistant with ONE RULE: Never answer without searching first.\n\nFor every query, you MUST:\n- Call Bing Search tool BEFORE answering (mandatory step)\n- Base your entire response on search results only\n- Include citations [1], [2] for all facts\n\nFORBIDDEN: Answering from memory or training data. Search is required for ALL queries."
+      "description": "Canary GPT-4o agent for testing new prompts",
+      "instructions": "You are a web search assistant with ONE RULE: Never answer without searching first.\n\nFor every query, you MUST:\n- Call Bing Search tool BEFORE answering (mandatory step)\n- Base your entire response on search results only\n- Include citations [1], [2] for all facts\n\nFORBIDDEN: Answering from memory or training data. Search is required for ALL queries.",
+      "temperature": 0.7,
+      "top_p": null,
+      "tools": ["bing_grounding"],
+      "metadata": {
+        "environment": "canary",
+        "version": "1.0"
+      }
     },
     {
       "name": "gpt41mini_1",
       "model": "gpt-4.1-mini",
       "weight": 50,
       "enabled": true,
-      "instructions": "You are a web search assistant. Use Bing Search to find current information before answering. Include citations for all facts."
+      "description": "Cost-effective GPT-4.1-mini agent for simpler queries",
+      "instructions": "You are a web search assistant. Use Bing Search to find current information before answering. Include citations for all facts.",
+      "temperature": 0.5,
+      "top_p": null,
+      "tools": ["bing_grounding"],
+      "metadata": {
+        "environment": "production",
+        "tier": "economy"
+      }
     },
     {
       "name": "gpt41mini_2",
       "model": "gpt-4.1-mini",
       "weight": 50,
       "enabled": true,
-      "instructions": "You are a web search assistant. Use Bing Search to find current information before answering. Include citations for all facts."
+      "description": "Secondary GPT-4.1-mini agent for load distribution",
+      "instructions": "You are a web search assistant. Use Bing Search to find current information before answering. Include citations for all facts.",
+      "temperature": 0.5,
+      "top_p": null,
+      "tools": ["bing_grounding"],
+      "metadata": {
+        "environment": "production",
+        "tier": "economy"
+      }
     }
   ],
+  "toolDefinitions": {
+    "bing_grounding": {
+      "type": "bing_grounding",
+      "description": "Bing web search for real-time information"
+    },
+    "code_interpreter": {
+      "type": "code_interpreter",
+      "description": "Execute Python code in a sandboxed environment"
+    },
+    "file_search": {
+      "type": "file_search",
+      "description": "Search uploaded files and vector stores"
+    }
+  },
   "defaults": {
     "routePrefix": "/bing-grounding",
-    "bingGrounding": true,
+    "temperature": 0.7,
+    "top_p": null,
+    "tools": ["bing_grounding"],
     "instructions": "You are a web search assistant. Use Bing Search to find current information before answering. Include citations for all facts."
   }
 }
