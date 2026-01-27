@@ -206,17 +206,16 @@ async def list_models():
     Returns:
         List of model deployments with their configuration
     """
-    import subprocess
-    import json as json_module
+    from azure.mgmt.cognitiveservices import CognitiveServicesManagementClient
     
     # Get resource group and foundry name from environment
     resource_group = os.getenv("AZURE_RESOURCE_GROUP")
     foundry_name = os.getenv("AZURE_FOUNDRY_NAME")
+    subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
     
-    if not resource_group or not foundry_name:
+    if not foundry_name:
         # Try to extract from endpoint
         if PROJECT_ENDPOINT:
-            # Endpoint format: https://<foundry>.cognitiveservices.azure.com/
             import re
             match = re.search(r'https://([^.]+)\.', PROJECT_ENDPOINT)
             if match:
@@ -224,36 +223,39 @@ async def list_models():
     
     models_list = []
     
-    if foundry_name and resource_group:
+    if foundry_name and resource_group and subscription_id:
         try:
-            result = subprocess.run(
-                [
-                    "az", "cognitiveservices", "account", "deployment", "list",
-                    "--name", foundry_name,
-                    "--resource-group", resource_group,
-                    "-o", "json"
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30
+            client = CognitiveServicesManagementClient(
+                credential=DefaultAzureCredential(),
+                subscription_id=subscription_id
             )
             
-            if result.returncode == 0 and result.stdout.strip():
-                deployments = json_module.loads(result.stdout)
-                for deployment in deployments:
-                    model_info = deployment.get("properties", {}).get("model", {})
-                    sku = deployment.get("sku", {})
-                    models_list.append({
-                        "name": deployment.get("name"),
-                        "model": model_info.get("name"),
-                        "version": model_info.get("version"),
-                        "format": model_info.get("format"),
-                        "sku": sku.get("name"),
-                        "capacity": sku.get("capacity"),
-                        "status": deployment.get("properties", {}).get("provisioningState")
-                    })
+            deployments = client.deployments.list(
+                resource_group_name=resource_group,
+                account_name=foundry_name
+            )
+            
+            for deployment in deployments:
+                model_info = deployment.properties.model if deployment.properties else None
+                sku = deployment.sku
+                models_list.append({
+                    "name": deployment.name,
+                    "model": model_info.name if model_info else None,
+                    "version": model_info.version if model_info else None,
+                    "format": model_info.format if model_info else None,
+                    "sku": sku.name if sku else None,
+                    "capacity": sku.capacity if sku else None,
+                    "status": deployment.properties.provisioning_state if deployment.properties else None
+                })
         except Exception as e:
             print(f"⚠️ Could not list models: {e}")
+    
+    return {
+        "total": len(models_list),
+        "region": AZURE_REGION,
+        "foundry": foundry_name,
+        "models": models_list
+    }
     
     return {
         "total": len(models_list),

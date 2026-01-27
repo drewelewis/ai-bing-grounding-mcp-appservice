@@ -303,6 +303,7 @@ jobs:
             --resource-group "rg-bing-grounding-mcp-prod" \
             --name "${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}" \
             --settings \
+              AZURE_SUBSCRIPTION_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
               AZURE_RESOURCE_GROUP="rg-bing-grounding-mcp-prod" \
               AZURE_FOUNDRY_NAME="${{ steps.resources.outputs.foundry_name }}" \
             --output none
@@ -572,6 +573,7 @@ jobs:
             --resource-group "rg-bing-grounding-mcp-prod-secondary" \
             --name "${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}" \
             --settings \
+              AZURE_SUBSCRIPTION_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
               AZURE_RESOURCE_GROUP="rg-bing-grounding-mcp-prod-secondary" \
               AZURE_FOUNDRY_NAME="${{ steps.resources.outputs.foundry_name }}" \
             --output none

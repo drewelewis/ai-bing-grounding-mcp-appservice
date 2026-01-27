@@ -4,6 +4,7 @@ pydantic
 uvicorn[standard]
 azure-ai-projects
 azure-identity
+azure-mgmt-cognitiveservices
 httpx
 python-dotenv
 pyyaml
