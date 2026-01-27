@@ -201,54 +201,58 @@ async def list_agents():
 @app.get("/models")
 async def list_models():
     """
-    List all model deployments in the Azure AI Foundry.
+    List all model deployments in the Azure AI Foundry project.
+    Uses the same AIProjectClient as the agents endpoint.
     
     Returns:
         List of model deployments with their configuration
     """
-    from azure.mgmt.cognitiveservices import CognitiveServicesManagementClient
+    if not PROJECT_ENDPOINT:
+        return {
+            "total": 0,
+            "region": AZURE_REGION,
+            "foundry": None,
+            "error": "AZURE_AI_PROJECT_ENDPOINT not configured",
+            "models": []
+        }
     
-    # Get resource group and foundry name from environment
-    resource_group = os.getenv("AZURE_RESOURCE_GROUP")
-    foundry_name = os.getenv("AZURE_FOUNDRY_NAME")
-    subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
-    
-    if not foundry_name:
-        # Try to extract from endpoint
-        if PROJECT_ENDPOINT:
-            import re
-            match = re.search(r'https://([^.]+)\.', PROJECT_ENDPOINT)
-            if match:
-                foundry_name = match.group(1)
+    # Extract foundry name from endpoint for display
+    foundry_name = None
+    import re
+    match = re.search(r'https://([^.]+)\.', PROJECT_ENDPOINT)
+    if match:
+        foundry_name = match.group(1)
     
     models_list = []
     
-    if foundry_name and resource_group and subscription_id:
-        try:
-            client = CognitiveServicesManagementClient(
-                credential=DefaultAzureCredential(),
-                subscription_id=subscription_id
-            )
-            
-            deployments = client.deployments.list(
-                resource_group_name=resource_group,
-                account_name=foundry_name
-            )
-            
-            for deployment in deployments:
-                model_info = deployment.properties.model if deployment.properties else None
-                sku = deployment.sku
-                models_list.append({
-                    "name": deployment.name,
-                    "model": model_info.name if model_info else None,
-                    "version": model_info.version if model_info else None,
-                    "format": model_info.format if model_info else None,
-                    "sku": sku.name if sku else None,
-                    "capacity": sku.capacity if sku else None,
-                    "status": deployment.properties.provisioning_state if deployment.properties else None
-                })
-        except Exception as e:
-            print(f"⚠️ Could not list models: {e}")
+    try:
+        client = AIProjectClient(
+            credential=DefaultAzureCredential(),
+            endpoint=PROJECT_ENDPOINT
+        )
+        
+        # List all model deployments using the same SDK as agents
+        deployments = client.deployments.list()
+        
+        for deployment in deployments:
+            models_list.append({
+                "name": deployment.name,
+                "model": deployment.model_name,
+                "version": deployment.model_version,
+                "format": deployment.model_publisher,
+                "sku": deployment.sku_name,
+                "capacity": deployment.sku_capacity,
+                "status": deployment.provisioning_state
+            })
+    except Exception as e:
+        print(f"⚠️ Could not list models: {e}")
+        return {
+            "total": 0,
+            "region": AZURE_REGION,
+            "foundry": foundry_name,
+            "error": str(e),
+            "models": []
+        }
     
     return {
         "total": len(models_list),
@@ -256,8 +260,6 @@ async def list_models():
         "foundry": foundry_name,
         "models": models_list
     }
-    
-    return {
         "total": len(models_list),
         "region": AZURE_REGION,
         "foundry": foundry_name,
