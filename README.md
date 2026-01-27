@@ -68,108 +68,65 @@ Your API will be available at the endpoint shown in the output.
 ### Multi-Region Architecture: 2 Regions with Centralized APIM
 
 ```mermaid
-graph TB
-    subgraph External["External Clients"]
-        Client[LLM Suite / MCP Client<br/>Selects model via API]
+flowchart TB
+    Client([MCP Client / LLM Suite])
+    
+    subgraph APIM[Azure API Management - East US 2]
+        Gateway[API Gateway]
+        Pool[Backend Pool<br/>50/50 Round Robin]
     end
     
-    subgraph PrimaryRegion["Primary Region (East US 2)"]
-        subgraph APIM["Azure API Management"]
-            Gateway[API Gateway<br/>• Circuit Breaker<br/>• Health Checks<br/>• Load Balancing<br/>• Session Affinity]
+    subgraph Region1[East US 2]
+        App1[App Service]
+        subgraph Agents1[6 Agents]
+            A1[gpt-4o x2]
+            A2[gpt-4.1-mini x2]
+            A3[gpt-4.1-nano x2]
         end
-        
-        subgraph AppService1["Azure App Service - Primary"]
-            WebApp1[App Service<br/>4 Agent Endpoints]
-        end
-        
-        subgraph Foundry1["Azure AI Foundry - Primary"]
-            subgraph Project1["AI Project"]
-                subgraph Models1["Model Deployments"]
-                    GPT4O1[GPT-4o<br/>10K TPM]
-                    GPT41Mini1[GPT-4.1-mini<br/>10K TPM]
-                end
-                subgraph Agents1["Agents"]
-                    Agent1A[bing-gpt4o-1]
-                    Agent1B[bing-gpt4o-2]
-                    Agent1C[bing-gpt41mini-1]
-                    Agent1D[bing-gpt41mini-2]
-                end
-                Bing1[Bing Grounding<br/>Connection]
-            end
-        end
+        Foundry1[AI Foundry + Bing]
     end
     
-    subgraph SecondaryRegion["Secondary Region (West US 2)"]
-        subgraph AppService2["Azure App Service - Secondary"]
-            WebApp2[App Service<br/>4 Agent Endpoints]
+    subgraph Region2[West US 2]
+        App2[App Service]
+        subgraph Agents2[6 Agents]
+            B1[gpt-4o x2]
+            B2[gpt-4.1-mini x2]
+            B3[gpt-4.1-nano x2]
         end
-        
-        subgraph Foundry2["Azure AI Foundry - Secondary"]
-            subgraph Project2["AI Project"]
-                subgraph Models2["Model Deployments"]
-                    GPT4O2[GPT-4o<br/>10K TPM]
-                    GPT41Mini2[GPT-4.1-mini<br/>10K TPM]
-                end
-                subgraph Agents2["Agents"]
-                    Agent2A[bing-gpt4o-1]
-                    Agent2B[bing-gpt4o-2]
-                    Agent2C[bing-gpt41mini-1]
-                    Agent2D[bing-gpt41mini-2]
-                end
-                Bing2[Bing Grounding<br/>Connection]
-            end
-        end
+        Foundry2[AI Foundry + Bing]
     end
     
-    Client -->|HTTPS| Gateway
-    Gateway -->|Primary Route| WebApp1
-    Gateway -->|Failover Route| WebApp2
-    
-    WebApp1 -->|Managed Identity| Project1
-    Agent1A & Agent1B --> GPT4O1
-    Agent1C & Agent1D --> GPT41Mini1
-    Agents1 --> Bing1
-    
-    WebApp2 -->|Managed Identity| Project2
-    Agent2A & Agent2B --> GPT4O2
-    Agent2C & Agent2D --> GPT41Mini2
-    Agents2 --> Bing2
+    Client --> Gateway
+    Gateway --> Pool
+    Pool -->|50%| App1
+    Pool -->|50%| App2
+    App1 --> Agents1
+    App2 --> Agents2
+    Agents1 --> Foundry1
+    Agents2 --> Foundry2
     
     style Gateway fill:#0078d4,color:#fff
-    style WebApp1 fill:#00bcf2,color:#000
-    style WebApp2 fill:#00bcf2,color:#000
-    style Project1 fill:#50e6ff,color:#000
-    style Project2 fill:#50e6ff,color:#000
-    style GPT4O1 fill:#ff6b6b,color:#fff
-    style GPT4O2 fill:#ff6b6b,color:#fff
-    style GPT41Mini1 fill:#ff6b6b,color:#fff
-    style GPT41Mini2 fill:#ff6b6b,color:#fff
-    style Bing1 fill:#00b294,color:#fff
-    style Bing2 fill:#00b294,color:#fff
-    style Agent1A fill:#9b59b6,color:#fff
-    style Agent1B fill:#9b59b6,color:#fff
-    style Agent1C fill:#9b59b6,color:#fff
-    style Agent1D fill:#9b59b6,color:#fff
-    style Agent2A fill:#9b59b6,color:#fff
-    style Agent2B fill:#9b59b6,color:#fff
-    style Agent2C fill:#9b59b6,color:#fff
-    style Agent2D fill:#9b59b6,color:#fff
+    style Pool fill:#0078d4,color:#fff
+    style App1 fill:#00bcf2,color:#000
+    style App2 fill:#00bcf2,color:#000
+    style Foundry1 fill:#50e6ff,color:#000
+    style Foundry2 fill:#50e6ff,color:#000
 ```
 
 **Bing Grounding Supported Models (Current):**
-| Model | Agents per Region | Description |
-|-------|-------------------|-------------|
-| **GPT-4o** | 2 | Latest GPT-4 multimodal model |
-| **GPT-4.1-mini** | 2 | Cost-effective smaller model |
+| Model | Agents per Region | Weights | Description |
+|-------|-------------------|---------|-------------|
+| **GPT-4o** | 2 | 90/10 | Latest GPT-4 multimodal model |
+| **GPT-4.1-mini** | 2 | 90/10 | Cost-effective smaller model |
+| **GPT-4.1-nano** | 2 | 90/10 | Ultra-lightweight model |
 
 > **Note:** Legacy models (GPT-4, GPT-4-turbo, GPT-3.5-turbo) also support Bing grounding but are deprecated and not deployed by default.
 
 **Characteristics:**
 - ✅ **Multi-Region:** 2 App Service instances for high availability
-- ✅ **Active/Active Load Balancing:** Round-robin distribution across regions
+- ✅ **Active/Active Load Balancing:** Round-robin distribution across regions (50/50)
 - ✅ **Model Selection:** API caller chooses which model to use
-- ✅ **TPM Capacity:** 40K TPM total (20K per region: 10K GPT-4o + 10K GPT-4.1-mini)
-- ✅ **Agent Pool:** 8 agents total (4 per region: 2 per model)
+- ✅ **Agent Pool:** 12 agents total (6 per region: 2 per model with 90/10 weights)
 - ✅ **Centralized APIM:** Single API Management in primary region
 - ✅ **Per-Model Failover:** 503 response triggers automatic retry on another region
 - ✅ **Aggregated Endpoints:** `/health` and `/agents` show data from all regions
@@ -181,93 +138,240 @@ graph TB
 
 ---
 
-## Multi-Region Routing & Failover
+## APIM Policies & Failover Architecture
 
-### Active/Active Load Balancing
+This section explains the APIM policy configuration, how requests flow through the system, and how failover works at each level.
 
-APIM distributes requests across both regions using round-robin (50/50 split). Each region independently manages its agents and traffic weights.
+### Request Flow Overview
 
+```mermaid
+flowchart LR
+    Client([Client]) --> APIM
+    
+    subgraph APIM[Azure API Management]
+        direction TB
+        GW[Gateway]
+        Pool[Backend Pool<br/>weight 1:1]
+        Policy[Policies]
+    end
+    
+    subgraph Primary[East US 2]
+        App1[App Service]
+        Agent1[Agent Selection<br/>90/10 weights]
+    end
+    
+    subgraph Secondary[West US 2]
+        App2[App Service]
+        Agent2[Agent Selection<br/>90/10 weights]
+    end
+    
+    APIM -->|50%| Primary
+    APIM -->|50%| Secondary
+    App1 --> Agent1
+    App2 --> Agent2
 ```
-                    ┌──────────────┐
-                    │     APIM     │
-                    │  Round-Robin │
-                    └──────┬───────┘
-                           │
-              ┌────────────┴────────────┐
-              ▼                         ▼
-    ┌─────────────────┐       ┌─────────────────┐
-    │   Region 1      │       │   Region 2      │
-    │   (East US 2)   │       │   (West US 2)   │
-    │                 │       │                 │
-    │ gpt-4o: 50/50   │       │ gpt-4o: 0/0     │
-    │ gpt-4.1: 50/50  │       │ gpt-4.1: 50/50  │
-    └─────────────────┘       └─────────────────┘
+
+### Two Levels of Load Balancing
+
+| Level | Where | Config | Distribution | Purpose |
+|-------|-------|--------|--------------|---------|
+| **Region** | APIM Backend Pool | `priority: 1, weight: 1` each | 50/50 round-robin | Geographic redundancy |
+| **Agent** | App Service code | `weight: 90` / `weight: 10` | 90/10 weighted random | Canary/blue-green per model |
+
+### APIM Policy Types
+
+APIM uses three policy types in this architecture:
+
+#### 1. API-Level Policy (Default Routing)
+
+Applied to all operations unless overridden. Routes to the backend pool for load balancing.
+
+> **Source:** [infra/apim/api.bicep](infra/apim/api.bicep#L77-L82) - `restApiPolicy` resource
+
+```xml
+<policies>
+  <inbound>
+    <base />
+    <set-backend-service backend-id="multi-region-pool" />
+  </inbound>
+  <backend>
+    <forward-request timeout="120" />
+  </backend>
+  <outbound><base /></outbound>
+  <on-error><base /></on-error>
+</policies>
 ```
 
-### Per-Model Failover with 503
+**Used by:** `/bing-grounding` (chat), all model-specific routes
 
-When a model has all agents with weight 0 in a region, the service returns HTTP 503. APIM automatically retries on the other region.
+#### 2. Agents Aggregation Policy
 
-**Scenario:**
-- Region 1: gpt-4o at 50/50 weights (active)
-- Region 2: gpt-4o at 0/0 weights (inactive)
+Calls both regions directly (not through pool) and merges responses.
 
-**Request flow:**
-1. Request for `gpt-4o` arrives at APIM
-2. APIM routes to Region 2 (round-robin)
-3. Region 2 returns `503 Service Unavailable` (no active gpt-4o agents)
-4. APIM retries on Region 1
-5. Region 1 handles request successfully ✅
+> **Source:** [infra/apim/api.bicep](infra/apim/api.bicep#L124-L223) - `singleRegionPolicyXml` and `multiRegionPolicyXml` variables
 
-This enables **per-model blue/green deployments** across regions:
-- Disable a model in Region 2 → test new version
-- Enable in Region 2, disable in Region 1 → gradual cutover
+```xml
+<policies>
+  <inbound>
+    <send-request mode="new" response-variable-name="primaryResponse" timeout="30">
+      <set-url>https://primary-app.azurewebsites.net/agents</set-url>
+    </send-request>
+    <send-request mode="new" response-variable-name="secondaryResponse" timeout="30">
+      <set-url>https://secondary-app.azurewebsites.net/agents</set-url>
+    </send-request>
+    <return-response>
+      <!-- C# code merges both responses into unified list -->
+    </return-response>
+  </inbound>
+</policies>
+```
 
-### Health Endpoint with Per-Model Status
+**Used by:** `/bing-grounding/agents`
 
-The `/health` endpoint shows status for each model:
+#### 3. Health Aggregation Policy
 
+Calls both regions and reports combined health status.
+
+> **Source:** [infra/apim/api.bicep](infra/apim/api.bicep#L240-L352) - `singleRegionHealthPolicyXml` and `multiRegionHealthPolicyXml` variables
+
+```xml
+<policies>
+  <inbound>
+    <send-request mode="new" response-variable-name="primaryResponse" timeout="10">
+      <set-url>https://primary-app.azurewebsites.net/health</set-url>
+    </send-request>
+    <send-request mode="new" response-variable-name="secondaryResponse" timeout="10">
+      <set-url>https://secondary-app.azurewebsites.net/health</set-url>
+    </send-request>
+    <return-response>
+      <!-- Returns: healthy (2/2), degraded (1/2), unhealthy (0/2) -->
+    </return-response>
+  </inbound>
+</policies>
+```
+
+**Used by:** `/bing-grounding/health`
+
+### Failover Mechanism
+
+```mermaid
+flowchart TD
+    Request([Request for gpt-4o]) --> APIM
+    APIM --> RR{Round Robin<br/>50/50}
+    
+    RR -->|50%| R1[Region 1<br/>eastus2]
+    RR -->|50%| R2[Region 2<br/>westus2]
+    
+    R1 --> Check1{gpt-4o agents<br/>weight > 0?}
+    R2 --> Check2{gpt-4o agents<br/>weight > 0?}
+    
+    Check1 -->|Yes| Select1[Select agent<br/>90/10 weighted]
+    Check1 -->|No| Return503_1[Return 503]
+    
+    Check2 -->|Yes| Select2[Select agent<br/>90/10 weighted]
+    Check2 -->|No| Return503_2[Return 503]
+    
+    Select1 --> Success1([Success])
+    Select2 --> Success2([Success])
+    
+    Return503_1 --> Retry{APIM Retry}
+    Return503_2 --> Retry
+    
+    Retry --> OtherRegion[Try Other Region]
+    OtherRegion --> Success3([Success])
+    
+    style Return503_1 fill:#ff6b6b,color:#fff
+    style Return503_2 fill:#ff6b6b,color:#fff
+    style Success1 fill:#00b894,color:#fff
+    style Success2 fill:#00b894,color:#fff
+    style Success3 fill:#00b894,color:#fff
+```
+
+### Failover Scenarios
+
+#### Scenario 1: Region Down
+
+If an entire App Service is unreachable:
+
+1. APIM routes request to Region 2
+2. Connection timeout or 5xx error
+3. APIM backend pool automatically retries on Region 1
+4. Request succeeds ✅
+
+**No configuration needed** - APIM backend pools handle this automatically.
+
+#### Scenario 2: Model Disabled in One Region
+
+Blue/green deployment pattern - gpt-4o disabled in Region 2:
+
+| Region | gpt-4o weights | gpt-4.1-mini weights |
+|--------|---------------|---------------------|
+| eastus2 | 90/10 (active) | 90/10 (active) |
+| westus2 | 0/0 (disabled) | 90/10 (active) |
+
+**Request flow for gpt-4o:**
+1. Request arrives at APIM
+2. Round-robin sends to Region 2
+3. App finds gpt-4o agents but all have weight=0
+4. App returns **503 Service Unavailable**
+5. APIM retries on Region 1
+6. Region 1 has active gpt-4o agents → success ✅
+
+**Request flow for gpt-4.1-mini:**
+- Works in both regions normally (no 503, no retry)
+
+#### Scenario 3: All Agents Unhealthy
+
+If both regions have weight=0 for a model:
+
+1. Region 1 returns 503
+2. APIM retries Region 2
+3. Region 2 returns 503
+4. Client receives 503 with error message
+
+### Health Check Architecture
+
+```mermaid
+flowchart TB
+    subgraph APIM[APIM Health Endpoint]
+        H[/health aggregation/]
+    end
+    
+    subgraph R1[Region 1 - eastus2]
+        H1[/health endpoint/]
+        M1[Per-model status]
+    end
+    
+    subgraph R2[Region 2 - westus2]
+        H2[/health endpoint/]
+        M2[Per-model status]
+    end
+    
+    H -->|parallel call| H1
+    H -->|parallel call| H2
+    
+    H1 --> M1
+    H2 --> M2
+    
+    M1 --> Agg[Aggregated Response]
+    M2 --> Agg
+```
+
+**Region-level `/health` response:**
 ```json
 {
-  "status": "partial",
-  "service": "bing-grounding-api",
+  "status": "ok",
   "region": "eastus2",
   "agents_loaded": 6,
-  "active_models": 2,
-  "total_models": 3,
   "models": {
-    "gpt-4o": {
-      "status": "active",
-      "agents": 2,
-      "active_agents": 2,
-      "total_weight": 100
-    },
-    "gpt-4.1-mini": {
-      "status": "active",
-      "agents": 2,
-      "active_agents": 2,
-      "total_weight": 100
-    },
-    "gpt-4.1-nano": {
-      "status": "inactive",
-      "agents": 2,
-      "active_agents": 0,
-      "total_weight": 0
-    }
+    "gpt-4o": {"status": "active", "agents": 2, "total_weight": 100},
+    "gpt-4.1-mini": {"status": "active", "agents": 2, "total_weight": 100},
+    "gpt-4.1-nano": {"status": "inactive", "agents": 2, "total_weight": 0}
   }
 }
 ```
 
-**Status values:**
-- `ok` - All models have active agents
-- `partial` - Some models have active agents
-- `inactive` - No models have active agents
-
-### Aggregated APIM Endpoints
-
-APIM provides aggregated views that combine data from all regions:
-
-**`/bing-grounding/health`** - Combined health from all regions:
+**APIM aggregated `/bing-grounding/health` response:**
 ```json
 {
   "status": "healthy",
@@ -281,18 +385,21 @@ APIM provides aggregated views that combine data from all regions:
 }
 ```
 
-**`/bing-grounding/agents`** - All agents from all regions:
-```json
-{
-  "total": 12,
-  "regions": ["eastus2", "westus2"],
-  "agents": [
-    {"route": "/bing-grounding/gpt4o_1", "model": "gpt-4o", "weight": 50, "region": "eastus2"},
-    {"route": "/bing-grounding/gpt4o_1", "model": "gpt-4o", "weight": 50, "region": "westus2"},
-    ...
-  ]
-}
-```
+**Status values:**
+| Status | Condition | Meaning |
+|--------|-----------|---------|
+| `healthy` | 2/2 regions OK | All systems operational |
+| `degraded` | 1/2 regions OK | One region down, failover active |
+| `unhealthy` | 0/2 regions OK | Complete outage |
+
+### Agent Distribution Summary
+
+| Model | Per Region | Total (2 Regions) | Weights |
+|-------|------------|-------------------|---------|
+| gpt-4o | 2 agents | 4 agents | 90/10 |
+| gpt-4.1-mini | 2 agents | 4 agents | 90/10 |
+| gpt-4.1-nano | 2 agents | 4 agents | 90/10 |
+| **Total** | **6 agents** | **12 agents** | - |
 
 ### Design Benefits
 
@@ -817,41 +924,41 @@ Triggered on push to `main` branch. Deploys application to both regions, configu
 
 ```mermaid
 flowchart TD
-    subgraph Build
-        A[📦 Checkout Code] --> B[🐍 Setup Python]
-        B --> C[📥 Install Dependencies]
-        C --> D[🗜️ Create Deploy Package]
-        D --> E[⬆️ Upload Artifact]
+    subgraph Build[Build]
+        A[Checkout Code] --> B[Setup Python]
+        B --> C[Install Dependencies]
+        C --> D[Create Deploy Package]
+        D --> E[Upload Artifact]
     end
 
-    subgraph "Deploy Primary (East US 2)"
-        F[⬇️ Download Artifact] --> G[🔐 Azure Login OIDC]
-        G --> H[🚀 Deploy to App Service]
-        H --> I[❤️ Health Check]
-        I --> J[📋 Deploy Models]
-        J --> K[🔗 Create Bing Connection]
-        K --> L[🤖 Configure Agents]
-        L --> M[🔄 Refresh App Service]
+    subgraph Primary[Deploy Primary - East US 2]
+        F[Download Artifact] --> G[Azure Login]
+        G --> H[Deploy to App Service]
+        H --> I[Health Check]
+        I --> J[Deploy Models]
+        J --> K[Create Bing Connection]
+        K --> L[Configure Agents]
+        L --> M[Refresh App]
     end
 
-    subgraph "Deploy Secondary (West US 2)"
-        N[⬇️ Download Artifact] --> O[🔐 Azure Login OIDC]
-        O --> P[🚀 Deploy to App Service]
-        P --> Q[❤️ Health Check]
-        Q --> R[📋 Deploy Models]
-        R --> S[🔗 Create Bing Connection]
-        S --> T[🤖 Configure Agents]
-        T --> U[🔄 Refresh App Service]
+    subgraph Secondary[Deploy Secondary - West US 2]
+        N[Download Artifact] --> O[Azure Login]
+        O --> P[Deploy to App Service]
+        P --> Q[Health Check]
+        Q --> R[Deploy Models]
+        R --> S[Create Bing Connection]
+        S --> T[Configure Agents]
+        T --> U[Refresh App]
     end
 
-    subgraph "Update APIM"
-        V[📂 Checkout Code] --> W[🔐 Azure Login OIDC]
-        W --> X[🌐 Deploy APIM Bicep]
-        X --> Y[✅ Backends + Pool + API]
+    subgraph APIM[Update APIM]
+        V[Checkout Code] --> W[Azure Login]
+        W --> X[Deploy APIM Bicep]
+        X --> Y[Configure Backends + Pool]
     end
 
-    subgraph Summary
-        Z[📊 Deployment Summary]
+    subgraph Summary[Summary]
+        Z[Deployment Summary]
     end
 
     E --> F
@@ -861,9 +968,9 @@ flowchart TD
     Y --> Z
 
     style Build fill:#e1f5fe
-    style "Deploy Primary (East US 2)" fill:#e8f5e9
-    style "Deploy Secondary (West US 2)" fill:#fff3e0
-    style "Update APIM" fill:#f3e5f5
+    style Primary fill:#e8f5e9
+    style Secondary fill:#fff3e0
+    style APIM fill:#f3e5f5
     style Summary fill:#fce4ec
 ```
 
@@ -873,31 +980,31 @@ Manually triggered to provision or teardown Azure infrastructure.
 
 ```mermaid
 flowchart TD
-    subgraph Inputs
+    subgraph Inputs[Inputs]
         A{Action?}
     end
 
-    subgraph "Provision Flow"
-        B[📂 Checkout Code] --> C[🔐 Azure Login]
-        C --> D[⚙️ Setup azd]
-        D --> E[🏗️ azd provision]
-        E --> F[🚀 azd deploy]
-        F --> G[✅ Output Endpoints]
+    subgraph Provision[Provision Flow]
+        B[Checkout Code] --> C[Azure Login]
+        C --> D[Setup azd]
+        D --> E[azd provision]
+        E --> F[azd deploy]
+        F --> G[Output Endpoints]
     end
 
-    subgraph "Teardown Flow"
-        H[📂 Checkout Code] --> I[🔐 Azure Login]
-        I --> J[⚙️ Setup azd]
-        J --> K[🗑️ azd down --force]
-        K --> L[✅ Resources Deleted]
+    subgraph Teardown[Teardown Flow]
+        H[Checkout Code] --> I[Azure Login]
+        I --> J[Setup azd]
+        J --> K[azd down --force]
+        K --> L[Resources Deleted]
     end
 
     A -->|provision| B
     A -->|teardown| H
 
     style Inputs fill:#fff9c4
-    style "Provision Flow" fill:#e8f5e9
-    style "Teardown Flow" fill:#ffebee
+    style Provision fill:#e8f5e9
+    style Teardown fill:#ffebee
 ```
 
 ##### Agent Weights Pipeline (`agent-weights.yml`)
@@ -906,34 +1013,34 @@ Manually triggered for blue/green deployments by adjusting agent traffic weights
 
 ```mermaid
 flowchart TD
-    subgraph Inputs
-        A[🎯 Select Deployment Type]
-        B[📊 Set Weight Percentages]
+    subgraph Inputs[Inputs]
+        A[Select Deployment Type]
+        B[Set Weight Percentages]
     end
 
-    subgraph Execution
-        C[📂 Checkout Code] --> D[🔐 Azure Login]
-        D --> E[🐍 Setup Python]
+    subgraph Execution[Execution]
+        C[Checkout Code] --> D[Azure Login]
+        D --> E[Setup Python]
         E --> F{Deployment Type?}
     end
 
-    subgraph "Blue/Green"
-        G[🔵 Set Blue: 0%]
-        G --> H[🟢 Set Green: 100%]
+    subgraph BlueGreen[Blue/Green]
+        G[Set Blue: 0%]
+        G --> H[Set Green: 100%]
     end
 
-    subgraph "Canary"
-        I[🔵 Set Stable: 90%]
-        I --> J[🟡 Set Canary: 10%]
+    subgraph Canary[Canary]
+        I[Set Stable: 90%]
+        I --> J[Set Canary: 10%]
     end
 
-    subgraph "Custom"
-        K[⚙️ Apply Custom Weights]
+    subgraph Custom[Custom]
+        K[Apply Custom Weights]
     end
 
-    subgraph Finalize
-        L[🔄 Refresh Agents]
-        M[✅ Verify Weights]
+    subgraph Finalize[Finalize]
+        L[Refresh Agents]
+        L --> M[Verify Weights]
     end
 
     A --> C
@@ -944,13 +1051,12 @@ flowchart TD
     H --> L
     J --> L
     K --> L
-    L --> M
 
     style Inputs fill:#fff9c4
     style Execution fill:#e1f5fe
-    style "Blue/Green" fill:#e8f5e9
-    style "Canary" fill:#fff3e0
-    style "Custom" fill:#f3e5f5
+    style BlueGreen fill:#e8f5e9
+    style Canary fill:#fff3e0
+    style Custom fill:#f3e5f5
     style Finalize fill:#fce4ec
 ```
 

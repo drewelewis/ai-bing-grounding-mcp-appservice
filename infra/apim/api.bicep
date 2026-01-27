@@ -295,7 +295,7 @@ var multiRegionHealthPolicyXml = '''<policies>
         var secondaryBody = ((IResponse)context.Variables["secondaryResponse"])?.Body?.As&lt;JObject&gt;();
         
         var regions = new JArray();
-        int healthyCount = 0;
+        var healthyCount = 0;
         
         if (primaryBody != null) {
           var region = primaryBody["region"]?.ToString() ?? "primary";
@@ -305,7 +305,7 @@ var multiRegionHealthPolicyXml = '''<policies>
             new JProperty("status", status),
             new JProperty("agents_loaded", primaryBody["agents_loaded"])
           ));
-          if (status == "ok") healthyCount++;
+          if (status == "ok") { healthyCount++; }
         } else {
           regions.Add(new JObject(
             new JProperty("region", "primary"),
@@ -322,7 +322,7 @@ var multiRegionHealthPolicyXml = '''<policies>
             new JProperty("status", status),
             new JProperty("agents_loaded", secondaryBody["agents_loaded"])
           ));
-          if (status == "ok") healthyCount++;
+          if (status == "ok") { healthyCount++; }
         } else {
           regions.Add(new JObject(
             new JProperty("region", "secondary"),
