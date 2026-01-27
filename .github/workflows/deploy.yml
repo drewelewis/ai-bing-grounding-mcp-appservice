@@ -328,6 +328,10 @@ jobs:
       - name: Check secondary region configuration
         id: check-config
         run: |
+          echo "=== DEBUG: Secondary Environment Variables ==="
+          echo "vars.AZURE_WEBAPP_NAME_SECONDARY = '${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}'"
+          echo "=============================================="
+          
           if [ -z "${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}" ]; then
             echo "⚠️ AZURE_WEBAPP_NAME_SECONDARY not configured - skipping secondary deployment"
             echo "skip=true" >> $GITHUB_OUTPUT
@@ -444,6 +448,16 @@ jobs:
       - name: Deploy required models
         if: steps.check-config.outputs.skip != 'true'
         run: |
+          echo "=== DEBUG: Model Deployment Variables ==="
+          echo "AZURE_FOUNDRY_NAME = '${{ steps.resources.outputs.foundry_name }}'"
+          echo "AZURE_RESOURCE_GROUP = 'rg-bing-grounding-mcp-prod-secondary'"
+          echo "=========================================="
+          
+          if [ -z "${{ steps.resources.outputs.foundry_name }}" ]; then
+            echo "❌ ERROR: AZURE_FOUNDRY_NAME is empty! Cannot deploy models."
+            exit 1
+          fi
+          
           echo "Deploying models from agents.config.yaml..."
           python scripts/postprovision_deploy_models.py
         env:
