@@ -546,6 +546,12 @@ jobs:
         run: |
           echo "🔄 Deploying APIM API configuration via Bicep..."
           
+          # Debug: Show raw variable values
+          echo "=== DEBUG: Environment Variables ==="
+          echo "vars.AZURE_WEBAPP_NAME_PRIMARY = '${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}'"
+          echo "vars.AZURE_WEBAPP_NAME_SECONDARY = '${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}'"
+          echo "==================================="
+          
           RG="rg-bing-grounding-mcp-prod"
           APIM_NAME="apim-52hltr3kdvkvo"
           SUB_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
@@ -556,6 +562,13 @@ jobs:
           echo "📍 Primary backend: $PRIMARY_URL"
           echo "📍 Secondary backend: $SECONDARY_URL"
           echo "📍 APIM: $APIM_NAME"
+          
+          # Check if secondary is empty
+          if [ -z "$SECONDARY_URL" ]; then
+            echo "⚠️ WARNING: Secondary URL is empty! Check AZURE_WEBAPP_NAME_SECONDARY variable in production-primary environment"
+          else
+            echo "✅ Secondary URL is set"
+          fi
           
           az deployment group create \
             --resource-group "$RG" \
