@@ -445,6 +445,22 @@ jobs:
           echo "bing_connection_id=$BING_CONNECTION_ID" >> $GITHUB_OUTPUT
           echo "rg=$RG" >> $GITHUB_OUTPUT
 
+      - name: List existing models (before)
+        if: steps.check-config.outputs.skip != 'true'
+        run: |
+          echo "=== EXISTING MODELS IN SECONDARY REGION ==="
+          FOUNDRY="${{ steps.resources.outputs.foundry_name }}"
+          RG="rg-bing-grounding-mcp-prod-secondary"
+          echo "AI Foundry: $FOUNDRY"
+          echo "Resource Group: $RG"
+          echo ""
+          az cognitiveservices account deployment list \
+            --name "$FOUNDRY" \
+            --resource-group "$RG" \
+            --query "[].{name:name, model:properties.model.name, version:properties.model.version, capacity:properties.model.capacity}" \
+            -o table || echo "No models found or error listing models"
+          echo "============================================"
+
       - name: Deploy required models
         if: steps.check-config.outputs.skip != 'true'
         run: |
@@ -463,6 +479,19 @@ jobs:
         env:
           AZURE_FOUNDRY_NAME: ${{ steps.resources.outputs.foundry_name }}
           AZURE_RESOURCE_GROUP: rg-bing-grounding-mcp-prod-secondary
+
+      - name: List existing models (after)
+        if: steps.check-config.outputs.skip != 'true'
+        run: |
+          echo "=== MODELS AFTER DEPLOYMENT ==="
+          FOUNDRY="${{ steps.resources.outputs.foundry_name }}"
+          RG="rg-bing-grounding-mcp-prod-secondary"
+          az cognitiveservices account deployment list \
+            --name "$FOUNDRY" \
+            --resource-group "$RG" \
+            --query "[].{name:name, model:properties.model.name, version:properties.model.version, capacity:properties.model.capacity}" \
+            -o table || echo "No models found or error listing models"
+          echo "================================"
 
       - name: Create Bing Connection in AI Foundry
         if: steps.check-config.outputs.skip != 'true'
@@ -505,6 +534,13 @@ jobs:
       - name: Configure agents
         if: steps.check-config.outputs.skip != 'true'
         run: |
+          echo "=== DEBUG: Agent Configuration Variables ==="
+          echo "AZURE_AI_PROJECT_ENDPOINT = '${{ vars.AZURE_AI_PROJECT_ENDPOINT_SECONDARY }}'"
+          echo "AZURE_FOUNDRY_NAME = '${{ steps.resources.outputs.foundry_name }}'"
+          echo "AZURE_AI_PROJECT_NAME = '${{ steps.resources.outputs.project_name }}'"
+          echo "BING_GROUNDING_RESOURCE_ID = '${{ steps.resources.outputs.bing_id }}'"
+          echo "============================================="
+          
           echo "Configuring agents from agents.config.yaml..."
           python scripts/postprovision_create_agents.py
         env:
@@ -515,6 +551,13 @@ jobs:
           AZURE_AI_PROJECT_NAME: ${{ steps.resources.outputs.project_name }}
           AZURE_BING_CONNECTION_ID: ${{ steps.resources.outputs.bing_connection_id }}
           AZURE_RESOURCE_GROUP: rg-bing-grounding-mcp-prod-secondary
+
+      - name: List deployed agents
+        if: steps.check-config.outputs.skip != 'true'
+        run: |
+          echo "=== DEPLOYED AGENTS IN SECONDARY ==="
+          curl -s "https://${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}.azurewebsites.net/agents" | jq '.' || echo "Failed to get agents"
+          echo "====================================="
 
       - name: Refresh agents in App Service
         if: steps.check-config.outputs.skip != 'true'
