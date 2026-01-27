@@ -198,6 +198,71 @@ async def list_agents():
     }
 
 
+@app.get("/models")
+async def list_models():
+    """
+    List all model deployments in the Azure AI Foundry.
+    
+    Returns:
+        List of model deployments with their configuration
+    """
+    import subprocess
+    import json as json_module
+    
+    # Get resource group and foundry name from environment
+    resource_group = os.getenv("AZURE_RESOURCE_GROUP")
+    foundry_name = os.getenv("AZURE_FOUNDRY_NAME")
+    
+    if not resource_group or not foundry_name:
+        # Try to extract from endpoint
+        if PROJECT_ENDPOINT:
+            # Endpoint format: https://<foundry>.cognitiveservices.azure.com/
+            import re
+            match = re.search(r'https://([^.]+)\.', PROJECT_ENDPOINT)
+            if match:
+                foundry_name = match.group(1)
+    
+    models_list = []
+    
+    if foundry_name and resource_group:
+        try:
+            result = subprocess.run(
+                [
+                    "az", "cognitiveservices", "account", "deployment", "list",
+                    "--name", foundry_name,
+                    "--resource-group", resource_group,
+                    "-o", "json"
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if result.returncode == 0 and result.stdout.strip():
+                deployments = json_module.loads(result.stdout)
+                for deployment in deployments:
+                    model_info = deployment.get("properties", {}).get("model", {})
+                    sku = deployment.get("sku", {})
+                    models_list.append({
+                        "name": deployment.get("name"),
+                        "model": model_info.get("name"),
+                        "version": model_info.get("version"),
+                        "format": model_info.get("format"),
+                        "sku": sku.get("name"),
+                        "capacity": sku.get("capacity"),
+                        "status": deployment.get("properties", {}).get("provisioningState")
+                    })
+        except Exception as e:
+            print(f"⚠️ Could not list models: {e}")
+    
+    return {
+        "total": len(models_list),
+        "region": AZURE_REGION,
+        "foundry": foundry_name,
+        "models": models_list
+    }
+
+
 # =============================================================================
 # Admin Endpoints - Agent Weight Management
 # =============================================================================

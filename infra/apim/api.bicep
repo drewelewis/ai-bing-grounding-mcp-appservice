@@ -119,6 +119,17 @@ resource agentsOperationRest 'Microsoft.ApiManagement/service/apis/operations@20
   }
 }
 
+resource modelsOperationRest 'Microsoft.ApiManagement/service/apis/operations@2022-08-01' = {
+  parent: restApi
+  name: 'models'
+  properties: {
+    displayName: 'List Models'
+    method: 'GET'
+    urlTemplate: '/models'
+    description: 'List all model deployments from all regions'
+  }
+}
+
 // Agents operation policy - aggregate from both regions
 // Two versions: one for single region, one for multi-region
 // Note: &lt; and &gt; are used to escape < and > in C# generics within XML
@@ -233,6 +244,120 @@ resource agentsOperationPolicy 'Microsoft.ApiManagement/service/apis/operations/
   properties: {
     format: 'xml'
     value: agentsPolicyFinal
+  }
+}
+
+// Models operation policy - aggregate models from both regions
+var singleRegionModelsPolicyXml = '''<policies>
+  <inbound>
+    <base />
+    <send-request mode="new" response-variable-name="primaryResponse" timeout="30" ignore-error="true">
+      <set-url>PRIMARY_URL/models</set-url>
+      <set-method>GET</set-method>
+    </send-request>
+    <return-response>
+      <set-status code="200" reason="OK" />
+      <set-header name="Content-Type" exists-action="override">
+        <value>application/json</value>
+      </set-header>
+      <set-body>@{
+        var primaryBody = ((IResponse)context.Variables["primaryResponse"])?.Body?.As&lt;JObject&gt;();
+        if (primaryBody == null) {
+          return new JObject(new JProperty("total", 0), new JProperty("regions", new JArray()), new JProperty("models", new JArray())).ToString();
+        }
+        var primaryRegion = primaryBody["region"]?.ToString() ?? "primary";
+        var models = primaryBody["models"] as JArray ?? new JArray();
+        var allModels = new JArray();
+        foreach (var model in models) {
+          var modelObj = (JObject)model.DeepClone();
+          modelObj["region"] = primaryRegion;
+          allModels.Add(modelObj);
+        }
+        return new JObject(
+          new JProperty("total", allModels.Count),
+          new JProperty("regions", new JArray(primaryRegion)),
+          new JProperty("models", allModels)
+        ).ToString();
+      }</set-body>
+    </return-response>
+  </inbound>
+  <backend><base /></backend>
+  <outbound><base /></outbound>
+  <on-error><base /></on-error>
+</policies>'''
+
+var multiRegionModelsPolicyXml = '''<policies>
+  <inbound>
+    <base />
+    <send-request mode="new" response-variable-name="primaryResponse" timeout="30" ignore-error="true">
+      <set-url>PRIMARY_URL/models</set-url>
+      <set-method>GET</set-method>
+    </send-request>
+    <send-request mode="new" response-variable-name="secondaryResponse" timeout="30" ignore-error="true">
+      <set-url>SECONDARY_URL/models</set-url>
+      <set-method>GET</set-method>
+    </send-request>
+    <return-response>
+      <set-status code="200" reason="OK" />
+      <set-header name="Content-Type" exists-action="override">
+        <value>application/json</value>
+      </set-header>
+      <set-body>@{
+        var primaryBody = ((IResponse)context.Variables["primaryResponse"])?.Body?.As&lt;JObject&gt;();
+        var secondaryBody = ((IResponse)context.Variables["secondaryResponse"])?.Body?.As&lt;JObject&gt;();
+        
+        var regions = new JArray();
+        var allModels = new JArray();
+        
+        if (primaryBody != null) {
+          var region = primaryBody["region"]?.ToString() ?? "primary";
+          regions.Add(region);
+          var models = primaryBody["models"] as JArray;
+          if (models != null) {
+            foreach (var model in models) {
+              var obj = (JObject)model.DeepClone();
+              obj["region"] = region;
+              allModels.Add(obj);
+            }
+          }
+        }
+        
+        if (secondaryBody != null) {
+          var region = secondaryBody["region"]?.ToString() ?? "secondary";
+          regions.Add(region);
+          var models = secondaryBody["models"] as JArray;
+          if (models != null) {
+            foreach (var model in models) {
+              var obj = (JObject)model.DeepClone();
+              obj["region"] = region;
+              allModels.Add(obj);
+            }
+          }
+        }
+        
+        return new JObject(
+          new JProperty("total", allModels.Count),
+          new JProperty("regions", regions),
+          new JProperty("models", allModels)
+        ).ToString();
+      }</set-body>
+    </return-response>
+  </inbound>
+  <backend><base /></backend>
+  <outbound><base /></outbound>
+  <on-error><base /></on-error>
+</policies>'''
+
+var modelsPolicyTemplate = hasSecondaryRegion ? multiRegionModelsPolicyXml : singleRegionModelsPolicyXml
+var modelsPolicyWithPrimary = replace(modelsPolicyTemplate, 'PRIMARY_URL', primaryBackendUrl)
+var modelsPolicyFinal = hasSecondaryRegion ? replace(modelsPolicyWithPrimary, 'SECONDARY_URL', secondaryBackendUrl) : modelsPolicyWithPrimary
+
+resource modelsOperationPolicy 'Microsoft.ApiManagement/service/apis/operations/policies@2022-08-01' = {
+  parent: modelsOperationRest
+  name: 'policy'
+  properties: {
+    format: 'xml'
+    value: modelsPolicyFinal
   }
 }
 
