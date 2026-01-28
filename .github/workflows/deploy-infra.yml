@@ -184,6 +184,60 @@ jobs:
           AZURE_LOCATION: ${{ vars.AZURE_LOCATION_PRIMARY }}
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Ensure App Service Plan SKU (B1 Basic)
+        run: |
+          echo "Ensuring App Service Plans are on B1 Basic tier..."
+          echo "Note: azd may skip SKU updates if resources already exist"
+          
+          ENV_NAME="${{ needs.validate.outputs.environment_name }}"
+          PRIMARY_RG="rg-bing-grounding-mcp-${ENV_NAME}"
+          SECONDARY_RG="rg-bing-grounding-mcp-${ENV_NAME}-secondary"
+          
+          # Function to update ASP SKU if needed
+          update_asp_sku() {
+            local RG="$1"
+            local REGION_NAME="$2"
+            
+            # Get App Service Plan name
+            ASP_NAME=$(az appservice plan list --resource-group "$RG" --query "[0].name" -o tsv 2>/dev/null || echo "")
+            
+            if [ -z "$ASP_NAME" ]; then
+              echo "  ⚠️ No App Service Plan found in $RG"
+              return
+            fi
+            
+            # Get current SKU
+            CURRENT_SKU=$(az appservice plan show --name "$ASP_NAME" --resource-group "$RG" --query "sku.name" -o tsv 2>/dev/null || echo "")
+            echo "  📍 $REGION_NAME: $ASP_NAME (current SKU: $CURRENT_SKU)"
+            
+            if [ "$CURRENT_SKU" != "B1" ]; then
+              echo "  🔄 Updating $ASP_NAME from $CURRENT_SKU to B1..."
+              az appservice plan update \
+                --name "$ASP_NAME" \
+                --resource-group "$RG" \
+                --sku B1 \
+                --output none
+              echo "  ✅ Updated $ASP_NAME to B1 Basic"
+            else
+              echo "  ✅ $ASP_NAME already on B1 Basic"
+            fi
+          }
+          
+          # Update primary region
+          echo ""
+          echo "=== Primary Region ==="
+          update_asp_sku "$PRIMARY_RG" "Primary"
+          
+          # Update secondary region if configured
+          if [ -n "${{ vars.AZURE_LOCATION_SECONDARY }}" ]; then
+            echo ""
+            echo "=== Secondary Region ==="
+            update_asp_sku "$SECONDARY_RG" "Secondary"
+          fi
+          
+          echo ""
+          echo "✅ App Service Plan SKU verification complete"
+
       - name: Create Bing Grounding resources
         run: |
           echo "Creating Bing Grounding resources for each region..."
