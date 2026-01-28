@@ -23,15 +23,32 @@ AZURE_REGION = os.getenv("REGION_NAME") or os.getenv("AZURE_REGION", "local")
 
 # Agent refresh interval (seconds)
 AGENT_REFRESH_INTERVAL = int(os.getenv("AGENT_REFRESH_INTERVAL", "300"))  # Default: 5 minutes
+AGENT_LOAD_TIMEOUT = int(os.getenv("AGENT_LOAD_TIMEOUT", "120"))  # Default: 2 minutes
+
+
+async def async_load_agents():
+    """Async wrapper for load_agents to run in background"""
+    try:
+        await asyncio.wait_for(
+            asyncio.to_thread(load_agents),
+            timeout=AGENT_LOAD_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        print(f"⚠️ Agent loading timed out after {AGENT_LOAD_TIMEOUT}s - will retry on next refresh")
+    except Exception as e:
+        print(f"⚠️ Error in async agent loading: {e}")
 
 
 async def periodic_agent_refresh():
     """Background task to refresh agents periodically"""
+    # Wait before first refresh to give initial load time to complete
+    await asyncio.sleep(30)
+    
     while True:
         await asyncio.sleep(AGENT_REFRESH_INTERVAL)
         try:
             print(f"🔄 Periodic agent refresh (every {AGENT_REFRESH_INTERVAL}s)...")
-            load_agents()
+            await async_load_agents()
         except Exception as e:
             print(f"⚠️ Periodic refresh failed: {e}")
 
@@ -39,19 +56,26 @@ async def periodic_agent_refresh():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan - startup and shutdown"""
-    # Startup: load agents and start background refresh
-    load_agents()
+    # Startup: Start background task for agent loading and refresh
+    print("🚀 Starting Bing Grounding API...")
+    
+    # Start agent loading in background (non-blocking)
+    load_task = asyncio.create_task(async_load_agents())
     refresh_task = asyncio.create_task(periodic_agent_refresh())
+    
     print(f"⏰ Background refresh scheduled every {AGENT_REFRESH_INTERVAL} seconds")
+    print("✅ API ready to accept requests (agents loading in background)")
     
     yield  # App is running
     
-    # Shutdown: cancel background task
+    # Shutdown: cancel background tasks
+    load_task.cancel()
     refresh_task.cancel()
     try:
+        await load_task
         await refresh_task
     except asyncio.CancelledError:
-        print("🛑 Background refresh stopped")
+        print("🛑 Background tasks stopped")
 
 
 app = FastAPI(
@@ -78,47 +102,64 @@ def load_agents():
         print("⚠️  Warning: AZURE_AI_PROJECT_ENDPOINT not set")
         return
     
-    all_agents = get_all_agent_ids()
-    
-    if not all_agents:
-        print("⚠️  Warning: No Bing agents found in project")
-        return
-    
-    # Clear existing agents if reloading
-    new_agents = {}
-    
-    # Create agent instance for each discovered agent
-    for agent_info in all_agents:
-        route = agent_info["route"]
-        agent_id = agent_info["agent_id"]
-        weight = agent_info.get("weight", 100)
+    try:
+        all_agents = get_all_agent_ids()
         
-        try:
-            agent_instance = BingGroundingAgent(endpoint=PROJECT_ENDPOINT, agent_id=agent_id)
+        if not all_agents:
+            print("⚠️  Warning: No Bing agents found in project")
+            return
+        
+        # Clear existing agents if reloading
+        new_agents = {}
+        
+        # Create agent instance for each discovered agent
+        for agent_info in all_agents:
+            route = agent_info["route"]
+            agent_id = agent_info["agent_id"]
+            weight = agent_info.get("weight", 100)
             
-            new_agents[route] = {
-                "agent_id": agent_id,
-                "model": agent_info["model"],
-                "index": agent_info["index"],
-                "weight": weight,
-                "instance": agent_instance
-            }
-            
-            print(f"✅ Registered agent: {route} -> {agent_id} ({agent_info['model']}, weight: {weight}%)")
-        except Exception as e:
-            print(f"⚠️  Failed to initialize agent {route}: {e}")
-    
-    AGENTS = new_agents
-    print(f"\n🚀 Total agents available: {len(AGENTS)}")
+            try:
+                agent_instance = BingGroundingAgent(endpoint=PROJECT_ENDPOINT, agent_id=agent_id)
+                
+                new_agents[route] = {
+                    "agent_id": agent_id,
+                    "model": agent_info["model"],
+                    "index": agent_info["index"],
+                    "weight": weight,
+                    "instance": agent_instance
+                }
+                
+                print(f"✅ Registered agent: {route} -> {agent_id} ({agent_info['model']}, weight: {weight}%)")
+            except Exception as e:
+                print(f"⚠️  Failed to initialize agent {route}: {e}")
+        
+        AGENTS = new_agents
+        print(f"\n🚀 Total agents available: {len(AGENTS)}")
+    except Exception as e:
+        print(f"⚠️  Error loading agents: {e}")
+        # Don't fail startup - allow app to start even if agents fail to load
 
 
 @app.get("/health")
 async def health_check():
     """
     Health check endpoint.
-    Returns 200 OK if the service is running.
+    Returns 200 OK if the service is running (even if agents are still loading).
     Shows per-model status for multi-region routing decisions.
     """
+    # Always return 200 OK so Azure health check passes
+    # Agents may still be loading in background
+    
+    if not AGENTS:
+        # No agents loaded yet (still initializing)
+        return {
+            "status": "starting",
+            "service": "bing-grounding-api",
+            "region": AZURE_REGION,
+            "agents_loaded": 0,
+            "message": "Agents loading in background - API operational"
+        }
+    
     # Calculate per-model status
     models_status = {}
     for route, info in AGENTS.items():

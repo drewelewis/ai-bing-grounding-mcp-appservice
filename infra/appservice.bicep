@@ -36,11 +36,20 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
     httpsOnly: true
     siteConfig: {
       linuxFxVersion: 'PYTHON|${pythonVersion}'
-      appCommandLine: 'uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4'
+      appCommandLine: 'uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --timeout-keep-alive 300'
       alwaysOn: true
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
+      healthCheckPath: '/health'
       appSettings: [
+        {
+          name: 'WEBSITES_CONTAINER_START_TIME_LIMIT'
+          value: '600'
+        }
+        {
+          name: 'WEBSITES_PORT'
+          value: '8000'
+        }
         {
           name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
           value: 'true'

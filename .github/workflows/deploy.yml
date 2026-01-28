@@ -283,6 +283,13 @@ jobs:
           
           echo "✅ Bing connection deployment complete"
 
+      - name: Re-authenticate Azure CLI (token refresh)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Configure agents
         run: |
           echo "Configuring agents from agents.config.yaml..."
@@ -530,6 +537,14 @@ jobs:
             || echo "⚠️ Connection may already exist or deployment had issues"
           
           echo "✅ Bing connection deployment complete"
+
+      - name: Re-authenticate Azure CLI (token refresh)
+        if: steps.check-config.outputs.skip != 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Configure agents
         if: steps.check-config.outputs.skip != 'true'
