@@ -276,14 +276,17 @@ async def list_models():
         deployments = client.deployments.list()
         
         for deployment in deployments:
+            # SKU is a dict like {'name': 'GlobalStandard', 'capacity': 251}
+            sku_info = getattr(deployment, 'sku', {}) or {}
+            
             models_list.append({
                 "name": deployment.name,
                 "model": deployment.model_name,
                 "version": deployment.model_version,
-                "format": deployment.model_publisher,
-                "sku": deployment.sku_name,
-                "capacity": deployment.sku_capacity,
-                "status": deployment.provisioning_state
+                "publisher": deployment.model_publisher,
+                "sku": sku_info.get('name', 'unknown'),
+                "capacity": sku_info.get('capacity', 0),
+                "type": getattr(deployment, 'type', 'unknown')
             })
     except Exception as e:
         print(f"⚠️ Could not list models: {e}")
