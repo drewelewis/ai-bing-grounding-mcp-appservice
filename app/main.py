@@ -301,11 +301,6 @@ async def list_models():
         "foundry": foundry_name,
         "models": models_list
     }
-        "total": len(models_list),
-        "region": AZURE_REGION,
-        "foundry": foundry_name,
-        "models": models_list
-    }
 
 
 # =============================================================================
