@@ -1,19 +1,18 @@
-# Deploy to Azure App Service (Multi-Region)
+# Deploy to Azure App Service (Multi-Region with Matrix)
 #
 # This workflow deploys the Bing Grounding API to multiple App Service instances.
-# Supports blue/green deployments via agent weight management.
+# Uses matrix strategy to ensure IDENTICAL deployment logic for all regions.
 #
 # Required secrets:
 #   AZURE_CLIENT_ID       - Service principal app ID (for OIDC)
 #   AZURE_TENANT_ID       - Azure AD tenant ID
 #   AZURE_SUBSCRIPTION_ID - Azure subscription ID
 #
-# Required variables:
-#   AZURE_WEBAPP_NAME_PRIMARY   - Primary region App Service name
-#   AZURE_WEBAPP_NAME_SECONDARY - Secondary region App Service name (optional)
-#
-# Or use a single secret for classic auth:
-#   AZURE_CREDENTIALS - Service principal JSON (az ad sp create-for-rbac --sdk-auth)
+# Required variables (in production-primary environment):
+#   AZURE_WEBAPP_NAME_PRIMARY   - Primary region App Service name (REQUIRED)
+#   AZURE_WEBAPP_NAME_SECONDARY - Secondary region App Service name (REQUIRED)
+#   AZURE_AI_PROJECT_ENDPOINT_PRIMARY - Primary AI project endpoint (REQUIRED)
+#   AZURE_AI_PROJECT_ENDPOINT_SECONDARY - Secondary AI project endpoint (REQUIRED)
 
 name: Deploy to Azure App Service
 
@@ -38,21 +37,6 @@ on:
         options:
           - production
           - staging
-      deploy_primary:
-        description: 'Deploy to primary region'
-        required: true
-        default: true
-        type: boolean
-      deploy_secondary:
-        description: 'Deploy to secondary region'
-        required: true
-        default: true
-        type: boolean
-
-# Required for OIDC authentication with Azure
-permissions:
-  id-token: write
-  contents: read
 
 env:
   PYTHON_VERSION: '3.11'
@@ -108,17 +92,50 @@ jobs:
           path: deploy.zip
           retention-days: 1
 
-  deploy-primary:
-    name: Deploy to Primary Region
+  deploy:
+    name: Deploy to ${{ matrix.region_name }}
     needs: build
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'push' || 
-      github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_primary == 'true'
+    strategy:
+      fail-fast: false  # Continue deploying other regions even if one fails
+      matrix:
+        include:
+          - region_name: "Primary (eastus2)"
+            env_name: "production-primary"
+            webapp_var: AZURE_WEBAPP_NAME_PRIMARY
+            endpoint_var: AZURE_AI_PROJECT_ENDPOINT_PRIMARY
+            resource_group: "rg-bing-grounding-mcp-prod"
+          - region_name: "Secondary (westus2)"
+            env_name: "production-secondary"
+            webapp_var: AZURE_WEBAPP_NAME_SECONDARY
+            endpoint_var: AZURE_AI_PROJECT_ENDPOINT_SECONDARY
+            resource_group: "rg-bing-grounding-mcp-prod-secondary"
+    
     environment:
-      name: production-primary
-      url: https://${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}.azurewebsites.net
+      name: ${{ matrix.env_name }}
+      url: https://${{ vars[matrix.webapp_var] }}.azurewebsites.net
+    
     steps:
+      - name: Validate configuration
+        run: |
+          echo "=== ${{ matrix.region_name }} Configuration Check ==="
+          echo "Webapp: ${{ vars[matrix.webapp_var] }}"
+          echo "Endpoint: ${{ vars[matrix.endpoint_var] }}"
+          echo "======================================================"
+          
+          if [ -z "${{ vars[matrix.webapp_var] }}" ]; then
+            echo "❌ ERROR: ${{ matrix.webapp_var }} not configured!"
+            echo "❌ Both regions MUST be configured for production reliability."
+            exit 1
+          fi
+          
+          if [ -z "${{ vars[matrix.endpoint_var] }}" ]; then
+            echo "❌ ERROR: ${{ matrix.endpoint_var }} not configured!"
+            exit 1
+          fi
+          
+          echo "✅ Configuration validated"
+
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
@@ -127,23 +144,6 @@ jobs:
       - name: Unzip artifact
         run: unzip deploy.zip -d ./app
 
-      - name: Debug secrets
-        run: |
-          echo "=== Debugging OIDC Configuration ==="
-          echo "Client ID length: ${#CLIENT_ID}"
-          echo "Client ID starts with: ${CLIENT_ID:0:8}"
-          echo "Tenant ID length: ${#TENANT_ID}"
-          echo "Subscription ID length: ${#SUB_ID}"
-          if [ -z "$CLIENT_ID" ]; then
-            echo "❌ ERROR: AZURE_CLIENT_ID is empty or not set!"
-          else
-            echo "✅ AZURE_CLIENT_ID is set"
-          fi
-        env:
-          CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          SUB_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
@@ -151,11 +151,11 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy to Primary App Service
+      - name: Deploy to App Service
         id: deploy
         uses: azure/webapps-deploy@v3
         with:
-          app-name: ${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}
+          app-name: ${{ vars[matrix.webapp_var] }}
           package: ./app
 
       - name: Health check
@@ -163,7 +163,7 @@ jobs:
           echo "Waiting for deployment to stabilize..."
           sleep 30
           
-          HEALTH_URL="https://${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}.azurewebsites.net/health"
+          HEALTH_URL="https://${{ vars[matrix.webapp_var] }}.azurewebsites.net/health"
           echo "Checking health at: $HEALTH_URL"
           
           for i in {1..5}; do
@@ -189,307 +189,101 @@ jobs:
       - name: Install dependencies
         run: pip install azure-identity azure-ai-projects pyyaml
 
-      # Note: Service principal role assignments are handled in deploy-infra.yml
-      # The Azure AI Developer role is required for Agents API access
-
       - name: Get Azure Resource Details
         id: resources
         run: |
-          ENV_NAME="prod"
-          RG="rg-bing-grounding-mcp-${ENV_NAME}"
-          BING_NAME="bing-grounding-${ENV_NAME}"
+          RG="${{ matrix.resource_group }}"
+          BING_NAME="bing-grounding-prod"
+          
+          echo "🔍 Querying Azure resources in $RG..."
+          
+          # Get AI Foundry details from AZURE_AI_PROJECT_ENDPOINT
+          PROJECT_ENDPOINT="${{ vars[matrix.endpoint_var] }}"
+          echo "Project endpoint: $PROJECT_ENDPOINT"
+          
+          # Extract foundry name from endpoint
+          # Format: https://ai-foundry-XXX.cognitiveservices.azure.com/
+          FOUNDRY_NAME=$(echo "$PROJECT_ENDPOINT" | sed 's|https://||' | sed 's|\..*||')
+          
+          echo "Foundry name: $FOUNDRY_NAME"
+          
+          # Get project name - query the AI Foundry resource
+          PROJECT_NAME=$(az ml workspace show \
+            --resource-group "$RG" \
+            --name "$FOUNDRY_NAME" \
+            --query name \
+            -o tsv 2>/dev/null || echo "ai-proj-${FOUNDRY_NAME: -12}")
+          
+          echo "Project name: $PROJECT_NAME"
           
           # Get Bing resource ID
-          echo "Looking up Bing resource: $BING_NAME in $RG"
-          BING_ID=$(az resource show --resource-group "$RG" --name "$BING_NAME" --resource-type "Microsoft.Bing/accounts" --query id -o tsv 2>/dev/null || echo "")
+          BING_ID=$(az resource list \
+            --resource-group "$RG" \
+            --resource-type "Microsoft.Bing/accounts" \
+            --query "[?name=='$BING_NAME'].id | [0]" \
+            -o tsv 2>/dev/null || echo "")
           
           if [ -z "$BING_ID" ]; then
-            echo "⚠️ Bing resource not found. Agents will be created without Bing Grounding."
+            echo "⚠️ Bing resource not found in $RG, trying other resource groups..."
+            BING_ID=$(az resource list \
+              --resource-type "Microsoft.Bing/accounts" \
+              --query "[?name=='$BING_NAME'].id | [0]" \
+              -o tsv || echo "")
+          fi
+          
+          echo "Bing ID: ${BING_ID:-NOT FOUND}"
+          
+          # Get Bing connection ID
+          if [ -n "$FOUNDRY_NAME" ]; then
+            BING_CONN_ID=$(az ml connection list \
+              --resource-group "$RG" \
+              --workspace-name "$FOUNDRY_NAME" \
+              --query "[?connectionType=='CustomKeys' && contains(name, 'bing')].name | [0]" \
+              -o tsv 2>/dev/null || echo "bing-grounding-connection")
           else
-            echo "✅ Found Bing resource: $BING_ID"
+            BING_CONN_ID="bing-grounding-connection"
           fi
           
-          # Get AI Foundry (AI Services account) name
-          FOUNDRY_NAME=$(az cognitiveservices account list --resource-group "$RG" --query "[?kind=='AIServices'].name | [0]" -o tsv 2>/dev/null || echo "")
-          echo "✅ Found AI Foundry: $FOUNDRY_NAME"
+          echo "Bing connection ID: $BING_CONN_ID"
           
-          # Get Project name from AI Foundry
-          # The project is a child resource of the AI Services account
-          PROJECT_NAME=$(az resource list --resource-group "$RG" --resource-type "Microsoft.CognitiveServices/accounts/projects" --query "[0].name" -o tsv 2>/dev/null | cut -d'/' -f2 || echo "")
-          
-          if [ -z "$PROJECT_NAME" ]; then
-            # Try alternative: list projects under the foundry
-            PROJECT_NAME=$(az cognitiveservices account list --resource-group "$RG" --query "[?kind=='AIServices'].name | [0]" -o tsv 2>/dev/null || echo "")
-            # Default project name pattern
-            PROJECT_NAME="${PROJECT_NAME}-project"
-          fi
-          echo "✅ Found Project: $PROJECT_NAME"
-          
-          # Construct Bing Connection ID
-          SUB_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-          BING_CONNECTION_ID="/subscriptions/${SUB_ID}/resourceGroups/${RG}/providers/Microsoft.CognitiveServices/accounts/${FOUNDRY_NAME}/projects/${PROJECT_NAME}/connections/default-bing"
-          echo "✅ Bing Connection ID: $BING_CONNECTION_ID"
-          
-          # Output all values
-          echo "bing_id=$BING_ID" >> $GITHUB_OUTPUT
+          # Export for later steps
+          echo "rg=$RG" >> $GITHUB_OUTPUT
           echo "foundry_name=$FOUNDRY_NAME" >> $GITHUB_OUTPUT
           echo "project_name=$PROJECT_NAME" >> $GITHUB_OUTPUT
-          echo "bing_connection_id=$BING_CONNECTION_ID" >> $GITHUB_OUTPUT
-          echo "rg=$RG" >> $GITHUB_OUTPUT
+          echo "bing_id=$BING_ID" >> $GITHUB_OUTPUT
+          echo "bing_connection_id=$BING_CONN_ID" >> $GITHUB_OUTPUT
 
-      - name: Deploy required models
+      - name: Deploy models
         run: |
-          echo "Deploying models from agents.config.yaml..."
+          echo "=== DEPLOYING MODELS ==="
+          echo "Resource Group: ${{ steps.resources.outputs.rg }}"
+          echo "AI Foundry: ${{ steps.resources.outputs.foundry_name }}"
+          echo "================================"
           python scripts/postprovision_deploy_models.py
-        env:
-          AZURE_FOUNDRY_NAME: ${{ steps.resources.outputs.foundry_name }}
-          AZURE_RESOURCE_GROUP: rg-bing-grounding-mcp-prod
-
-      - name: Create Bing Connection in AI Foundry
-        run: |
-          echo "Creating Bing connection in AI Foundry project..."
-          RG="${{ steps.resources.outputs.rg }}"
-          FOUNDRY_NAME="${{ steps.resources.outputs.foundry_name }}"
-          BING_ID="${{ steps.resources.outputs.bing_id }}"
-          
-          if [ -z "$BING_ID" ]; then
-            echo "⚠️ No Bing resource found - skipping connection creation"
-            exit 0
-          fi
-          
-          # Extract Bing resource name and group from ID
-          # ID format: /subscriptions/.../resourceGroups/RG/providers/Microsoft.Bing/accounts/NAME
-          BING_NAME=$(echo "$BING_ID" | sed 's|.*/||')
-          BING_RG=$(echo "$BING_ID" | sed 's|.*resourceGroups/||' | sed 's|/providers.*||')
-          
-          echo "📋 Connection Details:"
-          echo "   AI Foundry: $FOUNDRY_NAME"
-          echo "   Bing Resource: $BING_NAME"
-          echo "   Bing Resource Group: $BING_RG"
-          echo "   Target Resource Group: $RG"
-          
-          # Deploy the Bing connection using Bicep
-          echo "🚀 Deploying Bing connection..."
-          az deployment group create \
-            --resource-group "$RG" \
-            --template-file infra/bing-connection.bicep \
-            --parameters \
-              foundryName="$FOUNDRY_NAME" \
-              bingResourceId="$BING_ID" \
-              bingResourceName="$BING_NAME" \
-              bingResourceGroup="$BING_RG" \
-            --name "bing-connection-$(date +%Y%m%d%H%M%S)" \
-            || echo "⚠️ Connection may already exist or deployment had issues"
-          
-          echo "✅ Bing connection deployment complete"
-
-      - name: Re-authenticate Azure CLI (token refresh)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Configure agents
-        run: |
-          echo "Configuring agents from agents.config.yaml..."
-          python scripts/postprovision_create_agents.py
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT_PRIMARY }}
-          BING_GROUNDING_RESOURCE_ID: ${{ steps.resources.outputs.bing_id }}
           AZURE_FOUNDRY_NAME: ${{ steps.resources.outputs.foundry_name }}
-          AZURE_AI_PROJECT_NAME: ${{ steps.resources.outputs.project_name }}
-          AZURE_BING_CONNECTION_ID: ${{ steps.resources.outputs.bing_connection_id }}
-          AZURE_RESOURCE_GROUP: rg-bing-grounding-mcp-prod
+          AZURE_RESOURCE_GROUP: ${{ matrix.resource_group }}
 
-      - name: Refresh agents in App Service
+      - name: List deployed models
         run: |
-          echo "Triggering agent refresh in App Service..."
-          REFRESH_URL="https://${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}.azurewebsites.net/admin/refresh"
+          echo "=== DEPLOYED MODELS IN ${{ matrix.region_name }} ==="
+          az ml workspace show \
+            --resource-group "${{ steps.resources.outputs.rg }}" \
+            --name "${{ steps.resources.outputs.foundry_name }}" \
+            --query "{name:name, location:location}" \
+            -o table || echo "Could not query workspace"
           
-          for i in {1..3}; do
-            response=$(curl -s -X POST "$REFRESH_URL" -H "Content-Type: application/json" || echo '{"error":"request failed"}')
-            echo "Refresh response: $response"
-            
-            if echo "$response" | grep -q '"status"'; then
-              echo "✅ Agent refresh triggered successfully!"
-              break
-            fi
-            
-            echo "Attempt $i failed, retrying in 5 seconds..."
-            sleep 5
-          done
-
-  deploy-secondary:
-    name: Deploy to Secondary Region
-    needs: build
-    runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'push' || 
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_secondary == 'true')
-    environment:
-      name: production-secondary
-      url: https://${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}.azurewebsites.net
-    steps:
-      - name: Check secondary region configuration
-        id: check-config
-        run: |
-          echo "=== SECONDARY REGION CONFIGURATION CHECK ==="
-          echo "vars.AZURE_WEBAPP_NAME_SECONDARY = '${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}'"
-          echo "=============================================="
-          
-          if [ -z "${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}" ]; then
-            echo "❌ ERROR: AZURE_WEBAPP_NAME_SECONDARY not configured!"
-            echo "❌ Both regions MUST deploy for production reliability."
-            echo "❌ Configure this variable in GitHub repository settings."
-            exit 1
-          fi
-          
-          echo "✅ Secondary region configured: ${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}"
-
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: app-package
-
-      - name: Unzip artifact
-        run: unzip deploy.zip -d ./app
-
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Deploy to Secondary App Service
-        id: deploy
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}
-          package: ./app
-
-      - name: Health check
-        run: |
-          echo "Waiting for deployment to stabilize..."
-          sleep 30
-          
-          HEALTH_URL="https://${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}.azurewebsites.net/health"
-          echo "Checking health at: $HEALTH_URL"
-          
-          for i in {1..5}; do
-            response=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" || echo "000")
-            if [ "$response" = "200" ]; then
-              echo "✅ Health check passed!"
-              exit 0
-            fi
-            echo "Attempt $i: HTTP $response - waiting..."
-            sleep 10
-          done
-          
-          echo "⚠️ Health check did not return 200, but continuing..."
-
-      - name: Checkout code (for scripts)
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install azure-identity azure-ai-projects pyyaml
-
-      # Note: Service principal role assignments are handled in deploy-infra.yml
-
-      - name: Get Azure Resource Details
-        id: resources
-        run: |
-          ENV_NAME="prod"
-          RG="rg-bing-grounding-mcp-${ENV_NAME}-secondary"
-          BING_NAME="bing-grounding-${ENV_NAME}-secondary"
-          
-          # Get Bing resource ID
-          echo "Looking up Bing resource: $BING_NAME in $RG"
-          BING_ID=$(az resource show --resource-group "$RG" --name "$BING_NAME" --resource-type "Microsoft.Bing/accounts" --query id -o tsv 2>/dev/null || echo "")
-          
-          if [ -z "$BING_ID" ]; then
-            echo "⚠️ Bing resource not found. Agents will be created without Bing Grounding."
-          else
-            echo "✅ Found Bing resource: $BING_ID"
-          fi
-          
-          # Get AI Foundry (AI Services account) name
-          FOUNDRY_NAME=$(az cognitiveservices account list --resource-group "$RG" --query "[?kind=='AIServices'].name | [0]" -o tsv 2>/dev/null || echo "")
-          echo "✅ Found AI Foundry: $FOUNDRY_NAME"
-          
-          # Get Project name from AI Foundry
-          PROJECT_NAME=$(az resource list --resource-group "$RG" --resource-type "Microsoft.CognitiveServices/accounts/projects" --query "[0].name" -o tsv 2>/dev/null | cut -d'/' -f2 || echo "")
-          
-          if [ -z "$PROJECT_NAME" ]; then
-            PROJECT_NAME="${FOUNDRY_NAME}-project"
-          fi
-          echo "✅ Found Project: $PROJECT_NAME"
-          
-          # Construct Bing Connection ID
-          SUB_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-          BING_CONNECTION_ID="/subscriptions/${SUB_ID}/resourceGroups/${RG}/providers/Microsoft.CognitiveServices/accounts/${FOUNDRY_NAME}/projects/${PROJECT_NAME}/connections/default-bing"
-          echo "✅ Bing Connection ID: $BING_CONNECTION_ID"
-          
-          # Output all values
-          echo "bing_id=$BING_ID" >> $GITHUB_OUTPUT
-          echo "foundry_name=$FOUNDRY_NAME" >> $GITHUB_OUTPUT
-          echo "project_name=$PROJECT_NAME" >> $GITHUB_OUTPUT
-          echo "bing_connection_id=$BING_CONNECTION_ID" >> $GITHUB_OUTPUT
-          echo "rg=$RG" >> $GITHUB_OUTPUT
-
-      - name: List existing models (before)
-        run: |
-          echo "=== EXISTING MODELS IN SECONDARY REGION ==="
-          FOUNDRY="${{ steps.resources.outputs.foundry_name }}"
-          RG="rg-bing-grounding-mcp-prod-secondary"
-          echo "AI Foundry: $FOUNDRY"
-          echo "Resource Group: $RG"
           echo ""
+          echo "Models in AI Foundry:"
           az cognitiveservices account deployment list \
-            --name "$FOUNDRY" \
-            --resource-group "$RG" \
-            --query "[].{name:name, model:properties.model.name, version:properties.model.version, capacity:properties.model.capacity}" \
-            -o table || echo "No models found or error listing models"
-          echo "============================================"
-
-      - name: Deploy required models
-        run: |
-          echo "=== DEBUG: Model Deployment Variables ==="
-          echo "AZURE_FOUNDRY_NAME = '${{ steps.resources.outputs.foundry_name }}'"
-          echo "AZURE_RESOURCE_GROUP = 'rg-bing-grounding-mcp-prod-secondary'"
-          echo "=========================================="
-          
-          if [ -z "${{ steps.resources.outputs.foundry_name }}" ]; then
-            echo "❌ ERROR: AZURE_FOUNDRY_NAME is empty! Cannot deploy models."
-            exit 1
-          fi
-          
-          echo "Deploying models from agents.config.yaml..."
-          python scripts/postprovision_deploy_models.py
-        env:
-          AZURE_FOUNDRY_NAME: ${{ steps.resources.outputs.foundry_name }}
-          AZURE_RESOURCE_GROUP: rg-bing-grounding-mcp-prod-secondary
-
-      - name: List existing models (after)
-        run: |
-          echo "=== MODELS AFTER DEPLOYMENT ==="
-          FOUNDRY="${{ steps.resources.outputs.foundry_name }}"
-          RG="rg-bing-grounding-mcp-prod-secondary"
-          az cognitiveservices account deployment list \
-            --name "$FOUNDRY" \
-            --resource-group "$RG" \
-            --query "[].{name:name, model:properties.model.name, version:properties.model.version, capacity:properties.model.capacity}" \
+            --resource-group "${{ steps.resources.outputs.rg }}" \
+            --name "${{ steps.resources.outputs.foundry_name }}" \
+            --query "[].{Name:name, Model:properties.model.name, Version:properties.model.version, Capacity:sku.capacity}" \
             -o table || echo "No models found or error listing models"
           echo "================================"
 
-      - name: Create Bing Connection in AI Foundry
+      - name: Create Bing Connection
         run: |
           echo "Creating Bing connection in AI Foundry project..."
           RG="${{ steps.resources.outputs.rg }}"
@@ -535,34 +329,34 @@ jobs:
 
       - name: Configure agents
         run: |
-          echo "=== DEBUG: Agent Configuration Variables ==="
-          echo "AZURE_AI_PROJECT_ENDPOINT = '${{ vars.AZURE_AI_PROJECT_ENDPOINT_SECONDARY }}'"
+          echo "=== AGENT CONFIGURATION FOR ${{ matrix.region_name }} ==="
+          echo "AZURE_AI_PROJECT_ENDPOINT = '${{ vars[matrix.endpoint_var] }}'"
           echo "AZURE_FOUNDRY_NAME = '${{ steps.resources.outputs.foundry_name }}'"
           echo "AZURE_AI_PROJECT_NAME = '${{ steps.resources.outputs.project_name }}'"
           echo "BING_GROUNDING_RESOURCE_ID = '${{ steps.resources.outputs.bing_id }}'"
-          echo "============================================="
+          echo "================================================================"
           
           echo "Configuring agents from agents.config.yaml..."
           python scripts/postprovision_create_agents.py
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT_SECONDARY }}
+          AZURE_AI_PROJECT_ENDPOINT: ${{ vars[matrix.endpoint_var] }}
           BING_GROUNDING_RESOURCE_ID: ${{ steps.resources.outputs.bing_id }}
           AZURE_FOUNDRY_NAME: ${{ steps.resources.outputs.foundry_name }}
           AZURE_AI_PROJECT_NAME: ${{ steps.resources.outputs.project_name }}
           AZURE_BING_CONNECTION_ID: ${{ steps.resources.outputs.bing_connection_id }}
-          AZURE_RESOURCE_GROUP: rg-bing-grounding-mcp-prod-secondary
+          AZURE_RESOURCE_GROUP: ${{ matrix.resource_group }}
 
       - name: List deployed agents
         run: |
-          echo "=== DEPLOYED AGENTS IN SECONDARY ==="
-          curl -s "https://${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}.azurewebsites.net/agents" | jq '.' || echo "Failed to get agents"
+          echo "=== DEPLOYED AGENTS IN ${{ matrix.region_name }} ==="
+          curl -s "https://${{ vars[matrix.webapp_var] }}.azurewebsites.net/agents" | jq '.' || echo "Failed to get agents"
           echo "====================================="
 
       - name: Refresh agents in App Service
         run: |
           echo "Triggering agent refresh in App Service..."
-          REFRESH_URL="https://${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}.azurewebsites.net/admin/refresh"
+          REFRESH_URL="https://${{ vars[matrix.webapp_var] }}.azurewebsites.net/admin/refresh"
           
           for i in {1..3}; do
             response=$(curl -s -X POST "$REFRESH_URL" -H "Content-Type: application/json" || echo '{"error":"request failed"}')
@@ -579,11 +373,9 @@ jobs:
 
   update-apim:
     name: Update APIM Backend Pool
-    needs: [deploy-primary, deploy-secondary]
+    needs: [deploy]
     runs-on: ubuntu-latest
-    if: |
-      always() && 
-      (needs.deploy-primary.result == 'success' || needs.deploy-secondary.result == 'success')
+    if: always() && !cancelled()
     environment:
       name: production-primary
     
@@ -602,29 +394,16 @@ jobs:
         run: |
           echo "🔄 Deploying APIM API configuration via Bicep..."
           
-          # Debug: Show raw variable values
-          echo "=== DEBUG: Environment Variables ==="
-          echo "vars.AZURE_WEBAPP_NAME_PRIMARY = '${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}'"
-          echo "vars.AZURE_WEBAPP_NAME_SECONDARY = '${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}'"
-          echo "==================================="
-          
           RG="rg-bing-grounding-mcp-prod"
           APIM_NAME="apim-52hltr3kdvkvo"
           SUB_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           
           PRIMARY_URL="https://${{ vars.AZURE_WEBAPP_NAME_PRIMARY }}.azurewebsites.net"
-          SECONDARY_URL="${{ vars.AZURE_WEBAPP_NAME_SECONDARY && format('https://{0}.azurewebsites.net', vars.AZURE_WEBAPP_NAME_SECONDARY) || '' }}"
+          SECONDARY_URL="https://${{ vars.AZURE_WEBAPP_NAME_SECONDARY }}.azurewebsites.net"
           
           echo "📍 Primary backend: $PRIMARY_URL"
           echo "📍 Secondary backend: $SECONDARY_URL"
           echo "📍 APIM: $APIM_NAME"
-          
-          # Check if secondary is empty
-          if [ -z "$SECONDARY_URL" ]; then
-            echo "⚠️ WARNING: Secondary URL is empty! Check AZURE_WEBAPP_NAME_SECONDARY variable in production-primary environment"
-          else
-            echo "✅ Secondary URL is set"
-          fi
           
           az deployment group create \
             --resource-group "$RG" \
@@ -636,61 +415,10 @@ jobs:
             --name "apim-api-$(date +%Y%m%d%H%M%S)"
           
           echo "✅ APIM REST API and backends deployed successfully"
-          
-          # Configure MCP API with mcpTools
-          echo "🔧 Configuring MCP API with mcpTools..."
-          
-          REST_API_NAME="bing-grounding-api"
-          MCP_API_NAME="bing-grounding-mcp"
-          BASE_PATH="/subscriptions/${SUB_ID}/resourceGroups/${RG}/providers/Microsoft.ApiManagement/service/${APIM_NAME}"
-          API_VERSION="2024-06-01-preview"
-          
-          # Build mcpTools JSON
-          MCP_TOOLS=$(cat <<EOF
-          [
-            {
-              "name": "bingGrounding",
-              "operationId": "${BASE_PATH}/apis/${REST_API_NAME}/operations/bing-grounding"
-            },
-            {
-              "name": "healthCheck",
-              "operationId": "${BASE_PATH}/apis/${REST_API_NAME}/operations/health"
-            },
-            {
-              "name": "listAgents",
-              "operationId": "${BASE_PATH}/apis/${REST_API_NAME}/operations/agents"
-            }
-          ]
-          EOF
-          )
-          
-          # Build API properties
-          API_BODY=$(cat <<EOF
-          {
-            "properties": {
-              "displayName": "Bing Grounding MCP",
-              "description": "MCP Server for Bing Grounding with multi-region failover",
-              "path": "mcp",
-              "protocols": ["https"],
-              "subscriptionRequired": false,
-              "type": "mcp",
-              "mcpTools": ${MCP_TOOLS}
-            }
-          }
-          EOF
-          )
-          
-          echo "📤 Updating MCP API with tools..."
-          az rest \
-            --method PUT \
-            --uri "https://management.azure.com${BASE_PATH}/apis/${MCP_API_NAME}?api-version=${API_VERSION}" \
-            --body "${API_BODY}"
-          
-          echo "✅ MCP API configured with tools"
 
   summary:
     name: Deployment Summary
-    needs: [deploy-primary, deploy-secondary, update-apim]
+    needs: [deploy, update-apim]
     runs-on: ubuntu-latest
     if: always()
 
@@ -701,6 +429,5 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Primary Region | ${{ needs.deploy-primary.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Secondary Region | ${{ needs.deploy-secondary.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Multi-Region Deploy | ${{ needs.deploy.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| APIM Backend Pool | ${{ needs.update-apim.result }} |" >> $GITHUB_STEP_SUMMARY
