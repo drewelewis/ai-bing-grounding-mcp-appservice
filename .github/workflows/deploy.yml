@@ -12,6 +12,7 @@
 #   AZURE_WEBAPP_NAME_PRIMARY/SECONDARY   - App Service name (REQUIRED)
 #   AZURE_AI_PROJECT_ENDPOINT_PRIMARY/SECONDARY - AI Foundry endpoint (REQUIRED)
 #   AZURE_AI_PROJECT_NAME_PRIMARY/SECONDARY - AI Project name like ai-proj-xxx (REQUIRED)
+#   AZURE_REGION_PRIMARY/SECONDARY - Azure region like eastus2, westus3 (REQUIRED)
 
 name: Deploy to Azure App Service
 
@@ -98,41 +99,41 @@ jobs:
           retention-days: 1
 
   deploy:
-    name: Deploy to ${{ matrix.region_name }}
+    name: Deploy to ${{ matrix.env_name }} (${{ vars[matrix.region_var] }})
     needs: build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false  # Continue deploying other regions even if one fails
       matrix:
         include:
-          # Production - eastus2 and westus2
-          - region_name: "Primary (eastus2)"
-            env_name: "production-primary"
+          # Production environments
+          - env_name: "production-primary"
             webapp_var: AZURE_WEBAPP_NAME_PRIMARY
             endpoint_var: AZURE_AI_PROJECT_ENDPOINT_PRIMARY
             project_name_var: AZURE_AI_PROJECT_NAME_PRIMARY
+            region_var: AZURE_REGION_PRIMARY
             resource_group: "rg-bing-grounding-mcp-prod-primary"
             environment_filter: "production"
-          - region_name: "Secondary (westus2)"
-            env_name: "production-secondary"
+          - env_name: "production-secondary"
             webapp_var: AZURE_WEBAPP_NAME_SECONDARY
             endpoint_var: AZURE_AI_PROJECT_ENDPOINT_SECONDARY
             project_name_var: AZURE_AI_PROJECT_NAME_SECONDARY
+            region_var: AZURE_REGION_SECONDARY
             resource_group: "rg-bing-grounding-mcp-prod-secondary"
             environment_filter: "production"
-          # QA - eastus2 and westus3
-          - region_name: "QA Primary (eastus2)"
-            env_name: "qa-primary"
+          # QA environments
+          - env_name: "qa-primary"
             webapp_var: AZURE_WEBAPP_NAME_QA_PRIMARY
             endpoint_var: AZURE_AI_PROJECT_ENDPOINT_QA_PRIMARY
             project_name_var: AZURE_AI_PROJECT_NAME_QA_PRIMARY
+            region_var: AZURE_REGION_QA_PRIMARY
             resource_group: "rg-bing-grounding-mcp-qa-primary"
             environment_filter: "qa"
-          - region_name: "QA Secondary (westus3)"
-            env_name: "qa-secondary"
+          - env_name: "qa-secondary"
             webapp_var: AZURE_WEBAPP_NAME_QA_SECONDARY
             endpoint_var: AZURE_AI_PROJECT_ENDPOINT_QA_SECONDARY
             project_name_var: AZURE_AI_PROJECT_NAME_QA_SECONDARY
+            region_var: AZURE_REGION_QA_SECONDARY
             resource_group: "rg-bing-grounding-mcp-qa-secondary"
             environment_filter: "qa"
         exclude:
@@ -146,10 +147,11 @@ jobs:
     steps:
       - name: Validate configuration
         run: |
-          echo "=== ${{ matrix.region_name }} Configuration Check ==="
+          echo "=== ${{ matrix.env_name }} Configuration Check ==="
           echo "Webapp: ${{ vars[matrix.webapp_var] }}"
           echo "Endpoint: ${{ vars[matrix.endpoint_var] }}"
           echo "Project: ${{ vars[matrix.project_name_var] }}"
+          echo "Region: ${{ vars[matrix.region_var] }}"
           echo "======================================================"
           
           if [ -z "${{ vars[matrix.webapp_var] }}" ]; then
