@@ -33,9 +33,21 @@ def discover_agents_from_project(endpoint: str = None) -> Dict[str, List[dict]]:
     agents = {}
     
     try:
+        # Construct project-scoped endpoint if using AI Services endpoint
+        # This matches the logic in postprovision_create_agents.py
+        project_name = os.getenv('AZURE_AI_PROJECT_NAME')
+        if project_name and ('.cognitiveservices.azure.com' in endpoint):
+            # Build project-scoped endpoint: {base}/api/projects/{project}
+            base_endpoint = endpoint.rstrip('/')
+            project_endpoint = f"{base_endpoint}/api/projects/{project_name}"
+            print(f"📍 Using project-scoped endpoint: {project_endpoint}")
+        else:
+            project_endpoint = endpoint
+            print(f"📍 Using direct endpoint: {project_endpoint}")
+        
         client = AIProjectClient(
             credential=DefaultAzureCredential(),
-            endpoint=endpoint
+            endpoint=project_endpoint
         )
         
         # SDK method is 'list()' not 'list_agents()'
