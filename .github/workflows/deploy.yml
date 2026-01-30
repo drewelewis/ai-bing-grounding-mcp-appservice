@@ -35,6 +35,7 @@ on:
         type: choice
         options:
           - production
+          - qa
           - staging
 
 permissions:
@@ -104,18 +105,39 @@ jobs:
       fail-fast: false  # Continue deploying other regions even if one fails
       matrix:
         include:
+          # Production - eastus2 and westus2
           - region_name: "Primary (eastus2)"
             env_name: "production-primary"
             webapp_var: AZURE_WEBAPP_NAME_PRIMARY
             endpoint_var: AZURE_AI_PROJECT_ENDPOINT_PRIMARY
             project_name_var: AZURE_AI_PROJECT_NAME_PRIMARY
             resource_group: "rg-bing-grounding-mcp-prod-primary"
+            environment_filter: "production"
           - region_name: "Secondary (westus2)"
             env_name: "production-secondary"
             webapp_var: AZURE_WEBAPP_NAME_SECONDARY
             endpoint_var: AZURE_AI_PROJECT_ENDPOINT_SECONDARY
             project_name_var: AZURE_AI_PROJECT_NAME_SECONDARY
             resource_group: "rg-bing-grounding-mcp-prod-secondary"
+            environment_filter: "production"
+          # QA - eastus2 and westus3
+          - region_name: "QA Primary (eastus2)"
+            env_name: "qa-primary"
+            webapp_var: AZURE_WEBAPP_NAME_QA_PRIMARY
+            endpoint_var: AZURE_AI_PROJECT_ENDPOINT_QA_PRIMARY
+            project_name_var: AZURE_AI_PROJECT_NAME_QA_PRIMARY
+            resource_group: "rg-bing-grounding-mcp-qa-primary"
+            environment_filter: "qa"
+          - region_name: "QA Secondary (westus3)"
+            env_name: "qa-secondary"
+            webapp_var: AZURE_WEBAPP_NAME_QA_SECONDARY
+            endpoint_var: AZURE_AI_PROJECT_ENDPOINT_QA_SECONDARY
+            project_name_var: AZURE_AI_PROJECT_NAME_QA_SECONDARY
+            resource_group: "rg-bing-grounding-mcp-qa-secondary"
+            environment_filter: "qa"
+        exclude:
+          - environment_filter: ${{ github.event.inputs.environment != 'production' && 'production' || 'none' }}
+          - environment_filter: ${{ github.event.inputs.environment != 'qa' && 'qa' || 'none' }}
     
     environment:
       name: ${{ matrix.env_name }}
