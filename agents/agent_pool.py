@@ -33,16 +33,23 @@ def discover_agents_from_project(endpoint: str = None) -> Dict[str, List[dict]]:
     agents = {}
     
     try:
-        # Construct project-scoped endpoint if using AI Services endpoint
-        # This matches the logic in postprovision_create_agents.py
+        # Construct project-scoped endpoint if needed
+        # The endpoint might already include /api/projects/{project} or be just the base
         project_name = os.getenv('AZURE_AI_PROJECT_NAME')
-        if project_name and ('.cognitiveservices.azure.com' in endpoint):
-            # Build project-scoped endpoint: {base}/api/projects/{project}
+        
+        # Check if endpoint already contains the project path
+        if '/api/projects/' in endpoint:
+            # Already project-scoped, use as-is
+            project_endpoint = endpoint.rstrip('/')
+            print(f"📍 Using pre-configured project endpoint: {project_endpoint}")
+        elif project_name and '.cognitiveservices.azure.com' in endpoint:
+            # Base endpoint, add project path
             base_endpoint = endpoint.rstrip('/')
             project_endpoint = f"{base_endpoint}/api/projects/{project_name}"
-            print(f"📍 Using project-scoped endpoint: {project_endpoint}")
+            print(f"📍 Constructed project-scoped endpoint: {project_endpoint}")
         else:
-            project_endpoint = endpoint
+            # Use endpoint as-is
+            project_endpoint = endpoint.rstrip('/')
             print(f"📍 Using direct endpoint: {project_endpoint}")
         
         client = AIProjectClient(
