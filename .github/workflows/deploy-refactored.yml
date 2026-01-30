@@ -8,10 +8,11 @@
 #   AZURE_TENANT_ID       - Azure AD tenant ID
 #   AZURE_SUBSCRIPTION_ID - Azure subscription ID
 #
-# Required variables (in production-primary and production-secondary environments):
-#   AZURE_WEBAPP_NAME_PRIMARY/SECONDARY   - App Service name (REQUIRED)
-#   AZURE_AI_PROJECT_ENDPOINT_PRIMARY/SECONDARY - AI Foundry endpoint (REQUIRED)
-#   AZURE_AI_PROJECT_NAME_PRIMARY/SECONDARY - AI Project name like ai-proj-xxx (REQUIRED)
+# Required variables (in production-primary environment):
+#   AZURE_WEBAPP_NAME_PRIMARY   - Primary region App Service name (REQUIRED)
+#   AZURE_WEBAPP_NAME_SECONDARY - Secondary region App Service name (REQUIRED)
+#   AZURE_AI_PROJECT_ENDPOINT_PRIMARY - Primary AI project endpoint (REQUIRED)
+#   AZURE_AI_PROJECT_ENDPOINT_SECONDARY - Secondary AI project endpoint (REQUIRED)
 
 name: Deploy to Azure App Service
 
@@ -36,11 +37,6 @@ on:
         options:
           - production
           - staging
-
-permissions:
-  id-token: write      # Required for OIDC authentication with Azure
-  contents: read       # Required to checkout code
-  actions: read        # Required to download artifacts
 
 env:
   PYTHON_VERSION: '3.11'
@@ -108,13 +104,11 @@ jobs:
             env_name: "production-primary"
             webapp_var: AZURE_WEBAPP_NAME_PRIMARY
             endpoint_var: AZURE_AI_PROJECT_ENDPOINT_PRIMARY
-            project_name_var: AZURE_AI_PROJECT_NAME_PRIMARY
-            resource_group: "rg-bing-grounding-mcp-prod-primary"
+            resource_group: "rg-bing-grounding-mcp-prod"
           - region_name: "Secondary (westus2)"
             env_name: "production-secondary"
             webapp_var: AZURE_WEBAPP_NAME_SECONDARY
             endpoint_var: AZURE_AI_PROJECT_ENDPOINT_SECONDARY
-            project_name_var: AZURE_AI_PROJECT_NAME_SECONDARY
             resource_group: "rg-bing-grounding-mcp-prod-secondary"
     
     environment:
@@ -127,7 +121,6 @@ jobs:
           echo "=== ${{ matrix.region_name }} Configuration Check ==="
           echo "Webapp: ${{ vars[matrix.webapp_var] }}"
           echo "Endpoint: ${{ vars[matrix.endpoint_var] }}"
-          echo "Project: ${{ vars[matrix.project_name_var] }}"
           echo "======================================================"
           
           if [ -z "${{ vars[matrix.webapp_var] }}" ]; then
@@ -137,13 +130,7 @@ jobs:
           fi
           
           if [ -z "${{ vars[matrix.endpoint_var] }}" ]; then
-            echo "❌ ERROR: ${{ matrix.endpoint_var}} not configured!"
-            exit 1
-          fi
-          
-          if [ -z "${{ vars[matrix.project_name_var] }}" ]; then
-            echo "❌ ERROR: ${{ matrix.project_name_var }} not configured!"
-            echo "❌ Set this to the AI Project name (e.g., ai-proj-52hltr3kdvkvo)"
+            echo "❌ ERROR: ${{ matrix.endpoint_var }} not configured!"
             exit 1
           fi
           
@@ -210,18 +197,24 @@ jobs:
           
           echo "🔍 Querying Azure resources in $RG..."
           
-          # Get AI Foundry details from variables (NOT querying - AI Foundry is not an ML workspace!)
+          # Get AI Foundry details from AZURE_AI_PROJECT_ENDPOINT
           PROJECT_ENDPOINT="${{ vars[matrix.endpoint_var] }}"
-          PROJECT_NAME="${{ vars[matrix.project_name_var] }}"
-          
           echo "Project endpoint: $PROJECT_ENDPOINT"
-          echo "Project name: $PROJECT_NAME"
           
           # Extract foundry name from endpoint
           # Format: https://ai-foundry-XXX.cognitiveservices.azure.com/
           FOUNDRY_NAME=$(echo "$PROJECT_ENDPOINT" | sed 's|https://||' | sed 's|\..*||')
           
           echo "Foundry name: $FOUNDRY_NAME"
+          
+          # Get project name - query the AI Foundry resource
+          PROJECT_NAME=$(az ml workspace show \
+            --resource-group "$RG" \
+            --name "$FOUNDRY_NAME" \
+            --query name \
+            -o tsv 2>/dev/null || echo "ai-proj-${FOUNDRY_NAME: -12}")
+          
+          echo "Project name: $PROJECT_NAME"
           
           # Get Bing resource ID
           BING_ID=$(az resource list \
@@ -401,7 +394,7 @@ jobs:
         run: |
           echo "🔄 Deploying APIM API configuration via Bicep..."
           
-          RG="rg-bing-grounding-mcp-prod-primary"
+          RG="rg-bing-grounding-mcp-prod"
           APIM_NAME="apim-52hltr3kdvkvo"
           SUB_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
           
