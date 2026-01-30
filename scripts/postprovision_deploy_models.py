@@ -130,10 +130,15 @@ def main():
         "--name", foundry_name,
         "--resource-group", resource_group,
         "-o", "json"
-    ])
+    ], check=False)
+    
+    if not success:
+        print(f"❌ ERROR: Failed to list existing deployments")
+        print(f"STDERR: {stderr}")
+        sys.exit(1)  # FAIL IMMEDIATELY
     
     existing_deployments = set()
-    if success and stdout.strip():
+    if stdout.strip():
         try:
             deployments = json.loads(stdout)
             existing_deployments = {d["name"] for d in deployments}
@@ -142,7 +147,10 @@ def main():
             else:
                 print("   None found")
         except Exception as e:
-            print(f"   Could not parse: {e}")
+            print(f"❌ ERROR: Could not parse deployment list: {e}")
+            sys.exit(1)  # FAIL IMMEDIATELY
+    else:
+        print("   None found")
     print()
     
     # Deploy models
@@ -189,28 +197,31 @@ def main():
         if version:
             cmd.extend(["--model-version", version])
         
+        # Execute deployment - fail immediately on ANY error
         success, stdout, stderr = run_command(cmd, check=False)
         
-        if success:
-            print("✅ SUCCESS")
-            deployed_count += 1
-        else:
+        if not success:
             print("❌ FAILED")
-            if "already exists" in stderr.lower() or "conflict" in stderr.lower():
-                print(f"   (Model may already exist with different name)")
-            else:
-                print(f"   Error: {stderr[:300]}")
-            failed_count += 1
+            print(f"\n{'=' * 80}")
+            print(f"ERROR deploying {model_name}")
+            print(f"{'=' * 80}")
+            print(f"Command: {' '.join(cmd)}")
+            print(f"\nSTDOUT:\n{stdout}")
+            print(f"\nSTDERR:\n{stderr}")
+            print(f"{'=' * 80}")
+            sys.exit(1)  # FAIL IMMEDIATELY - NO FALLBACK
+        
+        print("✅ SUCCESS")
+        deployed_count += 1
     
     print()
     print("=" * 80)
     print(f"📊 Deployment Summary:")
     print(f"   ✅ Deployed: {deployed_count}")
     print(f"   ⏭️ Skipped: {skipped_count}")
-    print(f"   ❌ Failed: {failed_count}")
     print("=" * 80)
     
-    return 0 if failed_count == 0 else 1
+    return 0
 
 
 if __name__ == "__main__":
