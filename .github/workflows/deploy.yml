@@ -38,6 +38,11 @@ on:
           - production
           - staging
 
+permissions:
+  id-token: write      # Required for OIDC authentication with Azure
+  contents: read       # Required to checkout code
+  actions: read        # Required to download artifacts
+
 env:
   PYTHON_VERSION: '3.11'
 
