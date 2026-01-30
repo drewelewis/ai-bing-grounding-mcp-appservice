@@ -8,11 +8,12 @@
 #   AZURE_TENANT_ID       - Azure AD tenant ID
 #   AZURE_SUBSCRIPTION_ID - Azure subscription ID
 #
-# Required variables (in production-primary and production-secondary environments):
-#   AZURE_WEBAPP_NAME_PRIMARY/SECONDARY   - App Service name (REQUIRED)
-#   AZURE_AI_PROJECT_ENDPOINT_PRIMARY/SECONDARY - AI Foundry endpoint (REQUIRED)
-#   AZURE_AI_PROJECT_NAME_PRIMARY/SECONDARY - AI Project name like ai-proj-xxx (REQUIRED)
-#   AZURE_REGION_PRIMARY/SECONDARY - Azure region like eastus2, westus3 (REQUIRED)
+# Required variables (per environment - production_primary, production_secondary, qa_primary, qa_secondary):
+#   WEBAPP_NAME         - App Service name (REQUIRED)
+#   AI_PROJECT_ENDPOINT - AI Foundry endpoint (REQUIRED)
+#   AI_PROJECT_NAME     - AI Project name like ai-proj-xxx (REQUIRED)
+#   REGION              - Azure region like eastus2, westus3 (REQUIRED)
+#   RESOURCE_GROUP      - Resource group name (REQUIRED)
 
 name: Deploy to Azure App Service
 
@@ -99,7 +100,7 @@ jobs:
           retention-days: 1
 
   deploy:
-    name: Deploy to ${{ matrix.env_name }} (${{ vars[matrix.region_var] }})
+    name: Deploy to ${{ matrix.env_name }} (${{ vars.REGION }})
     needs: build
     runs-on: ubuntu-latest
     strategy:
@@ -107,34 +108,14 @@ jobs:
       matrix:
         include:
           # Production environments
-          - env_name: "production-primary"
-            webapp_var: AZURE_WEBAPP_NAME_PRIMARY
-            endpoint_var: AZURE_AI_PROJECT_ENDPOINT_PRIMARY
-            project_name_var: AZURE_AI_PROJECT_NAME_PRIMARY
-            region_var: AZURE_REGION_PRIMARY
-            resource_group: "rg-bing-grounding-mcp-prod-primary"
+          - env_name: "production_primary"
             environment_filter: "production"
-          - env_name: "production-secondary"
-            webapp_var: AZURE_WEBAPP_NAME_SECONDARY
-            endpoint_var: AZURE_AI_PROJECT_ENDPOINT_SECONDARY
-            project_name_var: AZURE_AI_PROJECT_NAME_SECONDARY
-            region_var: AZURE_REGION_SECONDARY
-            resource_group: "rg-bing-grounding-mcp-prod-secondary"
+          - env_name: "production_secondary"
             environment_filter: "production"
           # QA environments
-          - env_name: "qa-primary"
-            webapp_var: AZURE_WEBAPP_NAME_QA_PRIMARY
-            endpoint_var: AZURE_AI_PROJECT_ENDPOINT_QA_PRIMARY
-            project_name_var: AZURE_AI_PROJECT_NAME_QA_PRIMARY
-            region_var: AZURE_REGION_QA_PRIMARY
-            resource_group: "rg-bing-grounding-mcp-qa-primary"
+          - env_name: "qa_primary"
             environment_filter: "qa"
-          - env_name: "qa-secondary"
-            webapp_var: AZURE_WEBAPP_NAME_QA_SECONDARY
-            endpoint_var: AZURE_AI_PROJECT_ENDPOINT_QA_SECONDARY
-            project_name_var: AZURE_AI_PROJECT_NAME_QA_SECONDARY
-            region_var: AZURE_REGION_QA_SECONDARY
-            resource_group: "rg-bing-grounding-mcp-qa-secondary"
+          - env_name: "qa_secondary"
             environment_filter: "qa"
         exclude:
           - environment_filter: ${{ github.event.inputs.environment != 'production' && 'production' || 'none' }}
@@ -142,32 +123,36 @@ jobs:
     
     environment:
       name: ${{ matrix.env_name }}
-      url: https://${{ vars[matrix.webapp_var] }}.azurewebsites.net
+      url: https://${{ vars.WEBAPP_NAME }}.azurewebsites.net
     
     steps:
       - name: Validate configuration
         run: |
           echo "=== ${{ matrix.env_name }} Configuration Check ==="
-          echo "Webapp: ${{ vars[matrix.webapp_var] }}"
-          echo "Endpoint: ${{ vars[matrix.endpoint_var] }}"
-          echo "Project: ${{ vars[matrix.project_name_var] }}"
-          echo "Region: ${{ vars[matrix.region_var] }}"
+          echo "Webapp: ${{ vars.WEBAPP_NAME }}"
+          echo "Endpoint: ${{ vars.AI_PROJECT_ENDPOINT }}"
+          echo "Project: ${{ vars.AI_PROJECT_NAME }}"
+          echo "Region: ${{ vars.REGION }}"
+          echo "Resource Group: ${{ vars.RESOURCE_GROUP }}"
           echo "======================================================"
           
-          if [ -z "${{ vars[matrix.webapp_var] }}" ]; then
-            echo "❌ ERROR: ${{ matrix.webapp_var }} not configured!"
-            echo "❌ Both regions MUST be configured for production reliability."
+          if [ -z "${{ vars.WEBAPP_NAME }}" ]; then
+            echo "❌ ERROR: WEBAPP_NAME not configured!"
             exit 1
           fi
           
-          if [ -z "${{ vars[matrix.endpoint_var] }}" ]; then
-            echo "❌ ERROR: ${{ matrix.endpoint_var}} not configured!"
+          if [ -z "${{ vars.AI_PROJECT_ENDPOINT }}" ]; then
+            echo "❌ ERROR: AI_PROJECT_ENDPOINT not configured!"
             exit 1
           fi
           
-          if [ -z "${{ vars[matrix.project_name_var] }}" ]; then
-            echo "❌ ERROR: ${{ matrix.project_name_var }} not configured!"
-            echo "❌ Set this to the AI Project name (e.g., ai-proj-52hltr3kdvkvo)"
+          if [ -z "${{ vars.AI_PROJECT_NAME }}" ]; then
+            echo "❌ ERROR: AI_PROJECT_NAME not configured!"
+            exit 1
+          fi
+          
+          if [ -z "${{ vars.RESOURCE_GROUP }}" ]; then
+            echo "❌ ERROR: RESOURCE_GROUP not configured!"
             exit 1
           fi
           
@@ -200,7 +185,7 @@ jobs:
           echo "Waiting for deployment to stabilize..."
           sleep 30
           
-          HEALTH_URL="https://${{ vars[matrix.webapp_var] }}.azurewebsites.net/health"
+          HEALTH_URL="https://${{ vars.WEBAPP_NAME }}.azurewebsites.net/health"
           echo "Checking health at: $HEALTH_URL"
           
           for i in {1..5}; do
@@ -229,14 +214,14 @@ jobs:
       - name: Get Azure Resource Details
         id: resources
         run: |
-          RG="${{ matrix.resource_group }}"
+          RG="${{ vars.RESOURCE_GROUP }}"
           BING_NAME="bing-grounding-prod"
           
           echo "🔍 Querying Azure resources in $RG..."
           
           # Get AI Foundry details from variables (NOT querying - AI Foundry is not an ML workspace!)
-          PROJECT_ENDPOINT="${{ vars[matrix.endpoint_var] }}"
-          PROJECT_NAME="${{ vars[matrix.project_name_var] }}"
+          PROJECT_ENDPOINT="${{ vars.AI_PROJECT_ENDPOINT }}"
+          PROJECT_NAME="${{ vars.AI_PROJECT_NAME }}"
           
           echo "Project endpoint: $PROJECT_ENDPOINT"
           echo "Project name: $PROJECT_NAME"
@@ -371,7 +356,7 @@ jobs:
           python scripts/postprovision_create_agents.py
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          AZURE_AI_PROJECT_ENDPOINT: ${{ vars[matrix.endpoint_var] }}
+          AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AI_PROJECT_ENDPOINT }}
           BING_GROUNDING_RESOURCE_ID: ${{ steps.resources.outputs.bing_id }}
           AZURE_FOUNDRY_NAME: ${{ steps.resources.outputs.foundry_name }}
           AZURE_AI_PROJECT_NAME: ${{ steps.resources.outputs.project_name }}
@@ -381,13 +366,13 @@ jobs:
       - name: List deployed agents
         run: |
           echo "=== DEPLOYED AGENTS IN ${{ matrix.region_name }} ==="
-          curl -s "https://${{ vars[matrix.webapp_var] }}.azurewebsites.net/agents" | jq '.' || echo "Failed to get agents"
+          curl -s "https://${{ vars.WEBAPP_NAME }}.azurewebsites.net/agents" | jq '.' || echo "Failed to get agents"
           echo "====================================="
 
       - name: Refresh agents in App Service
         run: |
           echo "Triggering agent refresh in App Service..."
-          REFRESH_URL="https://${{ vars[matrix.webapp_var] }}.azurewebsites.net/admin/refresh"
+          REFRESH_URL="https://${{ vars.WEBAPP_NAME }}.azurewebsites.net/admin/refresh"
           
           for i in {1..3}; do
             response=$(curl -s -X POST "$REFRESH_URL" -H "Content-Type: application/json" || echo '{"error":"request failed"}')
