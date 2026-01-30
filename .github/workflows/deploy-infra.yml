@@ -38,8 +38,7 @@ on:
         default: 'prod'
         options:
           - prod
-          - staging
-          - dev
+          - qa
       
       skip_hooks:
         description: 'Skip pre/post provision hooks'
