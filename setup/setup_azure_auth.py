@@ -219,34 +219,28 @@ def main():
     print()
     
     # Step 4: Create Federated Credentials
-    print("🔑 Step 4: Create Federated Credentials for GitHub Environments")
+    print("🔑 Step 4: Create Federated Credentials for GitHub Environment")
     print("-" * 70)
     
-    # Create credentials for the environment the user specified
-    environments = [
-        f'{env_name}_primary',
-        f'{env_name}_secondary'
-    ]
+    # Enterprise approach: One credential per logical environment
+    # Multi-region deployment is handled by the workflow, not separate credentials
+    credential_name = f"github-{env_name}"
+    subject = f"repo:{github_repo}:environment:{env_name}"
     
-    for env_suffix in environments:
-        credential_name = f"github-{env_suffix.replace('_', '-')}"
-        subject = f"repo:{github_repo}:environment:{env_suffix}"
-        
-        # Check if credential already exists
-        check_cmd = f'az ad app federated-credential list --id {client_id} --query "[?name==\'{credential_name}\']" -o json'
-        result = run_command(check_cmd)
-        existing = json.loads(result.stdout)
-        
-        if existing:
-            print(f"   ⏭️  {credential_name} already exists, skipping")
-            continue
-        
+    # Check if credential already exists
+    check_cmd = f'az ad app federated-credential list --id {client_id} --query "[?name==\'{credential_name}\']" -o json'
+    result = run_command(check_cmd)
+    existing = json.loads(result.stdout)
+    
+    if existing:
+        print(f"   ⏭️  {credential_name} already exists, skipping")
+    else:
         # Create federated credential using JSON file to avoid shell escaping issues
         credential_json = {
             "name": credential_name,
             "issuer": "https://token.actions.githubusercontent.com",
             "subject": subject,
-            "description": f"GitHub Actions federated credential for {env_suffix}",
+            "description": f"GitHub Actions federated credential for {env_name}",
             "audiences": ["api://AzureADTokenExchange"]
         }
         
@@ -310,26 +304,25 @@ def main():
         print(f"   Or install from: https://cli.github.com/")
         print()
     else:
-        # Set environment variables for primary and secondary environments
+        # Set environment variables for the single environment
+        # Multi-region is handled in workflow, not separate GitHub environments
         env_vars = {
             'AZURE_ENV_NAME': env_name,
             'AZURE_LOCATION_PRIMARY': primary_region,
             'AZURE_LOCATION_SECONDARY': secondary_region
         }
         
-        for env_suffix in [f'{env_name}_primary', f'{env_name}_secondary']:
-            github_env_name = env_suffix
-            print(f"\n   Setting variables for {github_env_name}...")
-            
-            for key, value in env_vars.items():
-                cmd = f'gh variable set {key} --body "{value}" --env {github_env_name}'
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-                if result.returncode == 0:
-                    print(f"      ✅ Set {key}={value}")
-                else:
-                    # Environment might not exist yet, that's okay
-                    print(f"      ⏭️  Environment {github_env_name} will be created during first deployment")
-                    break
+        print(f"\n   Setting variables for {env_name} environment...")
+        
+        for key, value in env_vars.items():
+            cmd = f'gh variable set {key} --body "{value}" --env {env_name}'
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            if result.returncode == 0:
+                print(f"      ✅ Set {key}={value}")
+            else:
+                # Environment might not exist yet, that's okay
+                print(f"      ⏭️  Environment {env_name} will be created during first deployment")
+                break
         
         print()
     
@@ -348,42 +341,19 @@ def main():
     print("🚀 NEXT STEPS")
     print("=" * 70)
     print()
-    print("1️⃣  Deploy Infrastructure (wait ~10-15 minutes)")
+    print("1️⃣  Deploy Infrastructure to both regions (wait ~10-15 minutes)")
     print()
     print(f"  gh workflow run deploy-infra.yml --field action=provision --field environment={env_name}")
     print()
-    print("2️⃣  After deployment completes, get resource names from Azure:")
+    print("    The workflow will automatically deploy to:")
+    print(f"    • Primary region: {primary_region}")
+    print(f"    • Secondary region: {secondary_region}")
     print()
-    print(f"  az resource list --tag environment={env_name} --query \"[?type=='Microsoft.Web/sites' || type=='Microsoft.CognitiveServices/accounts'].{{name:name, type:type, resourceGroup:resourceGroup}}\" -o table")
+    print("2️⃣  After deployment completes, verify resources:")
     print()
-    print("3️⃣  Create environment configuration files:")
+    print(f"  az resource list --tag azd-env-name={env_name} --query \"[?type=='Microsoft.Web/sites' || type=='Microsoft.CognitiveServices/accounts'].{{name:name, type:type, region:location, resourceGroup:resourceGroup}}\" -o table")
     print()
-    print(f"  Create .env.{env_name}_primary with:")
-    print(f"  ┌─────────────────────────────────────────────────────────────────┐")
-    print(f"  │ AZURE_ENV_NAME={env_name}")
-    print(f"  │ WEBAPP_NAME=<webapp-name-from-azure>")
-    print(f"  │ AI_PROJECT_ENDPOINT=<ai-foundry-endpoint-from-azure>")
-    print(f"  │ AI_PROJECT_NAME=<ai-project-name-from-azure>")
-    print(f"  │ REGION={primary_region}")
-    print(f"  │ RESOURCE_GROUP=rg-bing-grounding-mcp-{env_name}-primary")
-    print(f"  └─────────────────────────────────────────────────────────────────┘")
-    print()
-    print(f"  Create .env.{env_name}_secondary with:")
-    print(f"  ┌─────────────────────────────────────────────────────────────────┐")
-    print(f"  │ AZURE_ENV_NAME={env_name}")
-    print(f"  │ WEBAPP_NAME=<webapp-name-from-azure>")
-    print(f"  │ AI_PROJECT_ENDPOINT=<ai-foundry-endpoint-from-azure>")
-    print(f"  │ AI_PROJECT_NAME=<ai-project-name-from-azure>")
-    print(f"  │ REGION={secondary_region}")
-    print(f"  │ RESOURCE_GROUP=rg-bing-grounding-mcp-{env_name}-secondary")
-    print(f"  └─────────────────────────────────────────────────────────────────┘")
-    print()
-    print("4️⃣  Sync configuration to GitHub:")
-    print()
-    print(f"  python configure/sync_github_env_simple.py --environment {env_name}_primary")
-    print(f"  python configure/sync_github_env_simple.py --environment {env_name}_secondary")
-    print()
-    print("5️⃣  Deploy the application:")
+    print("3️⃣  Deploy the application:")
     print()
     print(f"  gh workflow run deploy.yml --field environment={env_name}")
     print()

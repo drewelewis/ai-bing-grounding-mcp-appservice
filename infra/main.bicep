@@ -62,7 +62,7 @@ var resourceTokenSecondary = !empty(locationSecondary) ? toLower(uniqueString(su
 var tags = { 'azd-env-name': environmentName }
 var deploySecondaryRegion = !empty(locationSecondary)
 
-var finalResourceGroupName = !empty(resourceGroupName) ? resourceGroupName : '${abbrs.resourcesResourceGroups}bing-grounding-mcp-${environmentName}'
+var finalResourceGroupName = !empty(resourceGroupName) ? resourceGroupName : '${abbrs.resourcesResourceGroups}bing-grounding-mcp-${environmentName}-primary'
 var finalResourceGroupNameSecondary = !empty(resourceGroupNameSecondary) ? resourceGroupNameSecondary : '${abbrs.resourcesResourceGroups}bing-grounding-mcp-${environmentName}-secondary'
 var finalApimName = !empty(apimServiceName) ? apimServiceName : '${abbrs.apiManagementService}${resourceToken}'
 var finalFoundryName = !empty(foundryName) ? foundryName : '${abbrs.cognitiveServicesAccounts}foundry-${resourceToken}'
