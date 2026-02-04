@@ -243,7 +243,8 @@ def main():
     print()
     
     subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
-    location = os.getenv("AZURE_LOCATION", "eastus")
+    location_primary = os.getenv("AZURE_LOCATION", "eastus2")
+    location_secondary = os.getenv("AZURE_LOCATION_SECONDARY")  # Optional secondary region
     env_name = os.getenv("AZURE_ENV_NAME")
     
     if not subscription_id:
@@ -258,16 +259,33 @@ def main():
     resource_group_prefix = f"rg-bing-grounding-mcp-{env_name}"
     
     print(f"📍 Subscription: {subscription_id}")
-    print(f"📍 Location: {location}")
+    print(f"📍 Primary Location: {location_primary}")
+    if location_secondary:
+        print(f"📍 Secondary Location: {location_secondary}")
     print(f"📍 Resource Group Pattern: {resource_group_prefix}")
     print()
     
-    # Purge soft-deleted resources
-    purge_keyvaults(subscription_id, location)
+    # Purge soft-deleted resources in PRIMARY region
+    print("=" * 80)
+    print(f"PRIMARY REGION: {location_primary}")
+    print("=" * 80)
+    purge_keyvaults(subscription_id, location_primary)
     print()
-    purge_cognitive_services(subscription_id, location, resource_group_prefix)
+    purge_cognitive_services(subscription_id, location_primary, resource_group_prefix)
     print()
-    purge_apim(subscription_id, location, resource_group_prefix)
+    purge_apim(subscription_id, location_primary, resource_group_prefix)
+    
+    # Purge soft-deleted resources in SECONDARY region (if configured)
+    if location_secondary:
+        print()
+        print("=" * 80)
+        print(f"SECONDARY REGION: {location_secondary}")
+        print("=" * 80)
+        purge_keyvaults(subscription_id, location_secondary)
+        print()
+        purge_cognitive_services(subscription_id, location_secondary, resource_group_prefix)
+        print()
+        purge_apim(subscription_id, location_secondary, resource_group_prefix)
     
     print()
     print("✅ Soft-deleted resource purge check complete!")
