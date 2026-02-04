@@ -163,6 +163,20 @@ def main():
     print(f"✅ Service Principal created:")
     print(f"   Client ID: {client_id}")
     print(f"   Tenant ID: {tenant_id}")
+    
+    # Grant User Access Administrator role (required for role assignments in Bicep)
+    print(f"\n🔑 Granting 'User Access Administrator' role...")
+    print("   (Required for creating role assignments during deployment)")
+    
+    cmd = f"""az role assignment create \
+        --assignee {client_id} \
+        --role "User Access Administrator" \
+        --scope /subscriptions/{subscription_id} \
+        --description "Allow service principal to create role assignments for deployments" \
+        --output json"""
+    
+    run_command(cmd)
+    print(f"✅ User Access Administrator role granted")
     print()
     
     # Step 3: Update .env file
