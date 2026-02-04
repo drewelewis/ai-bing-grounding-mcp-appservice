@@ -249,7 +249,22 @@ def main():
     
     subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
     location_primary = os.getenv("AZURE_LOCATION", "eastus2")
-    location_secondary = os.getenv("AZURE_LOCATION_SECONDARY")  # Optional secondary region
+    # Try to get secondary location from environment, fall back to reading azd env
+    location_secondary = os.getenv("AZURE_LOCATION_SECONDARY")
+    if not location_secondary:
+        # Try to read from azd environment
+        try:
+            result = subprocess.run(
+                ["azd", "env", "get-value", "AZURE_LOCATION_SECONDARY"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                location_secondary = result.stdout.strip()
+        except:
+            pass  # Secondary location is optional
+    
     env_name = os.getenv("AZURE_ENV_NAME")
     
     if not subscription_id:
