@@ -116,13 +116,17 @@ def purge_cognitive_services(subscription_id, location, resource_group_prefix):
         return
     
     # Filter for location - purge ALL in the location to avoid conflicts
+    # Normalize location names: "eastus2" vs "East US 2", "westus3" vs "West US 3"
+    location_normalized = location.replace(' ', '').lower()
+    
     matching_accounts = []
     for account in deleted_accounts:
-        props = account.get('properties', {})
-        acc_location = props.get('location', '').replace(' ', '').lower()
+        # Check both root location and properties.location
+        acc_location = account.get('location', '') or account.get('properties', {}).get('location', '')
+        acc_location_normalized = acc_location.replace(' ', '').lower()
         
         # Purge any soft-deleted account in the same location (safer approach)
-        if acc_location == location.replace(' ', '').lower():
+        if acc_location_normalized == location_normalized:
             matching_accounts.append(account)
     
     if not matching_accounts:
@@ -137,9 +141,10 @@ def purge_cognitive_services(subscription_id, location, resource_group_prefix):
         # Extract resource group from ID
         parts = resource_id.split('/')
         resource_group = parts[4] if len(parts) > 4 else None
-        acc_location = account.get('properties', {}).get('location', location)
+        # Get location from root or properties
+        acc_location = account.get('location') or account.get('properties', {}).get('location', location)
         
-        print(f"     Purging: {account_name} (RG: {resource_group})...", end=" ", flush=True)
+        print(f"     Purging: {account_name} (RG: {resource_group}, Location: {acc_location})...", end=" ", flush=True)
         
         # Try purge command
         success, stdout, stderr = run_command([
