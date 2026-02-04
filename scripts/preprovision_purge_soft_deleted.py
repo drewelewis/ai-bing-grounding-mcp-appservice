@@ -247,12 +247,21 @@ def main():
     print("=" * 80)
     print()
     
+    # Debug: Show what environment variables we have
+    print("[DEBUG] Environment check:")
+    print(f"  AZURE_SUBSCRIPTION_ID: {'SET' if os.getenv('AZURE_SUBSCRIPTION_ID') else 'MISSING'}")
+    print(f"  AZURE_ENV_NAME: {os.getenv('AZURE_ENV_NAME', 'MISSING')}")
+    print(f"  AZURE_LOCATION: {os.getenv('AZURE_LOCATION', 'MISSING')}")
+    print(f"  AZURE_LOCATION_SECONDARY: {os.getenv('AZURE_LOCATION_SECONDARY', 'MISSING')}")
+    print()
+    
     subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
     location_primary = os.getenv("AZURE_LOCATION", "eastus2")
     # Try to get secondary location from environment, fall back to reading azd env
     location_secondary = os.getenv("AZURE_LOCATION_SECONDARY")
     if not location_secondary:
         # Try to read from azd environment
+        print("[DEBUG] Attempting to read AZURE_LOCATION_SECONDARY from azd env...")
         try:
             result = subprocess.run(
                 ["azd", "env", "get-value", "AZURE_LOCATION_SECONDARY"],
@@ -262,17 +271,23 @@ def main():
             )
             if result.returncode == 0 and result.stdout.strip():
                 location_secondary = result.stdout.strip()
-        except:
+                print(f"[DEBUG] Got secondary location from azd: {location_secondary}")
+            else:
+                print("[DEBUG] No secondary location in azd env")
+        except Exception as e:
+            print(f"[DEBUG] Could not read from azd env: {e}")
             pass  # Secondary location is optional
     
     env_name = os.getenv("AZURE_ENV_NAME")
     
     if not subscription_id:
         print("❌ AZURE_SUBSCRIPTION_ID not set")
+        print("[DEBUG] This script cannot run without AZURE_SUBSCRIPTION_ID")
         sys.exit(1)
     
     if not env_name:
         print("❌ AZURE_ENV_NAME not set")
+        print("[DEBUG] This script cannot run without AZURE_ENV_NAME")
         sys.exit(1)
     
     # Resource group pattern for this deployment
