@@ -179,8 +179,12 @@ jobs:
           echo "Running pre-provision scripts..."
           python scripts/preprovision_read_model_config.py || true
           python scripts/preprovision_register_providers.py || true
+          python scripts/preprovision_purge_soft_deleted.py || true
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_ENV_NAME: ${{ needs.validate.outputs.environment_name }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION_PRIMARY }}
+          AZURE_LOCATION_SECONDARY: ${{ vars.AZURE_LOCATION_SECONDARY }}
 
       - name: Provision infrastructure
         run: |
