@@ -3,13 +3,23 @@
 # This workflow provisions Azure infrastructure using azd and Bicep templates.
 # Supports multi-region deployments with AI Foundry, App Service, and APIM.
 #
-# Required secrets:
+# PREREQUISITES - AUTOMATED SETUP:
+#   Run: python setup/setup_azure_auth.py
+#
+#   This script will:
+#   1. Create Azure Service Principal
+#   2. Add Federated Credentials for your chosen environment:
+#      - {environment}_primary
+#      - {environment}_secondary
+#   3. Configure GitHub secrets and environment variables
+#
+# Required secrets (set by setup script):
 #   AZURE_CLIENT_ID       - Service principal app ID (for OIDC)
 #   AZURE_TENANT_ID       - Azure AD tenant ID
 #   AZURE_SUBSCRIPTION_ID - Azure subscription ID
 #
-# Required variables:
-#   AZURE_ENV_NAME             - azd environment name (e.g., "prod", "dev")
+# Required variables (per environment, set by setup script):
+#   AZURE_ENV_NAME             - azd environment name (e.g., "prod", "qa", "development")
 #   AZURE_LOCATION_PRIMARY     - Primary region (e.g., "eastus2")
 #
 # Optional variables:
@@ -32,13 +42,10 @@ on:
           - what-if        # Preview changes without applying
       
       environment:
-        description: 'Target environment'
+        description: 'Target environment (e.g., prod, qa, development)'
         required: true
-        type: choice
+        type: string
         default: 'prod'
-        options:
-          - prod
-          - qa
       
       skip_hooks:
         description: 'Skip pre/post provision hooks'
@@ -594,3 +601,73 @@ jobs:
           echo "| Provision | ${{ needs.provision.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Deploy | ${{ needs.deploy.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Teardown | ${{ needs.teardown.result }} |" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Azure Login
+        if: needs.provision.result == 'success'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Generate Environment Configuration Files
+        if: needs.provision.result == 'success'
+        run: |
+          ENV_NAME="${{ needs.validate.outputs.environment_name }}"
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 1. Create Local Environment Files" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Get resources for primary
+          PRIMARY_RG="rg-bing-grounding-mcp-${ENV_NAME}-primary"
+          SECONDARY_RG="rg-bing-grounding-mcp-${ENV_NAME}-secondary"
+          
+          # Primary environment
+          PRIMARY_WEBAPP=$(az webapp list -g $PRIMARY_RG --query "[0].name" -o tsv || echo "app-${ENV_NAME}-primary-xxxxx")
+          PRIMARY_AI_ENDPOINT=$(az cognitiveservices account list -g $PRIMARY_RG --query "[?kind=='AIServices'].properties.endpoint | [0]" -o tsv || echo "https://ai-foundry-${ENV_NAME}-primary-xxxxx.cognitiveservices.azure.com/")
+          PRIMARY_AI_PROJECT=$(az cognitiveservices account list -g $PRIMARY_RG --query "[?kind=='AIServices'].name | [0]" -o tsv || echo "ai-proj-${ENV_NAME}-primary-xxxxx")
+          PRIMARY_REGION=$(az group show -n $PRIMARY_RG --query location -o tsv || echo "eastus2")
+          
+          # Secondary environment
+          SECONDARY_WEBAPP=$(az webapp list -g $SECONDARY_RG --query "[0].name" -o tsv || echo "app-${ENV_NAME}-secondary-xxxxx")
+          SECONDARY_AI_ENDPOINT=$(az cognitiveservices account list -g $SECONDARY_RG --query "[?kind=='AIServices'].properties.endpoint | [0]" -o tsv || echo "https://ai-foundry-${ENV_NAME}-secondary-xxxxx.cognitiveservices.azure.com/")
+          SECONDARY_AI_PROJECT=$(az cognitiveservices account list -g $SECONDARY_RG --query "[?kind=='AIServices'].name | [0]" -o tsv || echo "ai-proj-${ENV_NAME}-secondary-xxxxx")
+          SECONDARY_REGION=$(az group show -n $SECONDARY_RG --query location -o tsv || echo "westus2")
+          
+          echo "Create \`.env.${ENV_NAME}_primary\`:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "AZURE_ENV_NAME=${ENV_NAME}" >> $GITHUB_STEP_SUMMARY
+          echo "WEBAPP_NAME=${PRIMARY_WEBAPP}" >> $GITHUB_STEP_SUMMARY
+          echo "AI_PROJECT_ENDPOINT=${PRIMARY_AI_ENDPOINT}" >> $GITHUB_STEP_SUMMARY
+          echo "AI_PROJECT_NAME=${PRIMARY_AI_PROJECT}" >> $GITHUB_STEP_SUMMARY
+          echo "REGION=${PRIMARY_REGION}" >> $GITHUB_STEP_SUMMARY
+          echo "RESOURCE_GROUP=${PRIMARY_RG}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "Create \`.env.${ENV_NAME}_secondary\`:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "AZURE_ENV_NAME=${ENV_NAME}" >> $GITHUB_STEP_SUMMARY
+          echo "WEBAPP_NAME=${SECONDARY_WEBAPP}" >> $GITHUB_STEP_SUMMARY
+          echo "AI_PROJECT_ENDPOINT=${SECONDARY_AI_ENDPOINT}" >> $GITHUB_STEP_SUMMARY
+          echo "AI_PROJECT_NAME=${SECONDARY_AI_PROJECT}" >> $GITHUB_STEP_SUMMARY
+          echo "REGION=${SECONDARY_REGION}" >> $GITHUB_STEP_SUMMARY
+          echo "RESOURCE_GROUP=${SECONDARY_RG}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### 2. Sync to GitHub" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "python configure/sync_github_env_simple.py --environment ${ENV_NAME}_primary" >> $GITHUB_STEP_SUMMARY
+          echo "python configure/sync_github_env_simple.py --environment ${ENV_NAME}_secondary" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### 3. Deploy Application" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "gh workflow run deploy.yml --field environment=${ENV_NAME}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+

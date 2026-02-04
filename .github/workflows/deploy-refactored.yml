@@ -30,13 +30,10 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Deployment environment'
+        description: 'Deployment environment (e.g., production, staging, development)'
         required: true
         default: 'production'
-        type: choice
-        options:
-          - production
-          - staging
+        type: string
 
 env:
   PYTHON_VERSION: '3.11'

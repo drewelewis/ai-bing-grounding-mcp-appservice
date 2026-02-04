@@ -31,13 +31,10 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Deployment environment'
+        description: 'Deployment environment (e.g., production, qa, development)'
         required: true
         default: 'production'
-        type: choice
-        options:
-          - production
-          - qa
+        type: string
 
 permissions:
   id-token: write      # Required for OIDC authentication with Azure
