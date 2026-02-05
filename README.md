@@ -75,6 +75,27 @@ Install required tools:
 - **Azure CLI**: https://learn.microsoft.com/cli/azure/install-azure-cli
 - **GitHub CLI**: https://cli.github.com/
 
+**GitHub Personal Access Token (Required):**
+
+The deployment workflow automatically configures GitHub environment variables, which requires a PAT with appropriate permissions.
+
+1. Go to: https://github.com/settings/tokens?type=beta
+2. Click "Generate new token"
+3. Configure:
+   - **Token name**: `azure-deployment-automation`
+   - **Repository access**: Select your repository (`drewelewis/ai-bing-grounding-mcp-appservice`)
+   - **Permissions**:
+     - Repository → Environments (Read and write)
+     - Repository → Variables (Read and write)
+4. Click "Generate token" and copy it
+5. Add as repository secret:
+   - Go to: https://github.com/YOUR_USERNAME/YOUR_REPO/settings/secrets/actions/new
+   - Name: `GH_PAT`
+   - Secret: Paste your token
+   - Click "Add secret"
+
+> **Why this is needed:** The workflow queries Azure resources and automatically sets GitHub environment variables (webapp names, AI endpoints, Bing resource IDs) to eliminate manual configuration. GitHub's default `GITHUB_TOKEN` lacks permission to modify environment variables.
+
 ### Step 1: Run Setup Script
 
 ```bash
@@ -173,38 +194,11 @@ gh workflow run deploy.yml --field environment=production
 
 Complete these steps once to set up authentication:
 
-### 1. GitHub Authentication
+### 1. GitHub Personal Access Token
 
-**Option A: Using GitHub CLI (Recommended)**
+**Required for automated environment variable configuration.**
 
-```bash
-# Install GitHub CLI (if not already installed)
-# Windows: winget install GitHub.cli
-# macOS: brew install gh
-# Linux: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
-
-# Authenticate with GitHub
-gh auth login
-```
-
-**Option B: Using Fine-Grained Personal Access Token**
-
-1. Go to: https://github.com/settings/tokens?type=beta
-2. Click "Generate new token"
-3. Configure:
-   - **Token name**: `azure-deployment-automation`
-   - **Repository access**: Select your repository
-   - **Permissions**:
-     - Repository → Administration (Read and write)
-     - Repository → Environments (Read and write)
-     - Repository → Secrets (Read and write)
-4. Click "Generate token" and copy it
-5. Add to `.env` file:
-   ```bash
-   GITHUB_TOKEN=github_pat_xxxxxxxxxxxxx
-   ```
-
----
+See [Prerequisites → GitHub Personal Access Token](#prerequisites) in the "Deploying to Azure" section above.
 
 ### 2. Azure Authentication
 
