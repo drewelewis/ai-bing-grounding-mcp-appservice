@@ -127,6 +127,8 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_ENV_NAME: ${{ github.event.inputs.environment || 'dev1' }}
           AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT_PRIMARY }}
+          AZURE_FOUNDRY_NAME: ${{ vars.AZURE_FOUNDRY_NAME_PRIMARY }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_PRIMARY }}
 
       - name: Create Agents for Primary Region
         if: vars.AZURE_AI_PROJECT_ENDPOINT_PRIMARY != ''
@@ -148,6 +150,8 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_ENV_NAME: ${{ github.event.inputs.environment || 'dev1' }}
           AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT_SECONDARY }}
+          AZURE_FOUNDRY_NAME: ${{ vars.AZURE_FOUNDRY_NAME_SECONDARY }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_SECONDARY }}
 
       - name: Create Agents for Secondary Region
         if: vars.AZURE_AI_PROJECT_ENDPOINT_SECONDARY != ''
@@ -159,6 +163,7 @@ jobs:
           AZURE_ENV_NAME: ${{ github.event.inputs.environment || 'dev1' }}
           AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT_SECONDARY }}
           BING_GROUNDING_RESOURCE_ID: ${{ vars.BING_GROUNDING_RESOURCE_ID_SECONDARY }}
+
 
       - name: Deploy to Primary Region
         if: vars.AZURE_WEBAPP_NAME_PRIMARY != ''
