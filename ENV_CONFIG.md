@@ -47,10 +47,10 @@ $env:GITHUB_TOKEN="ghp_xxxxx"
 export GITHUB_TOKEN=ghp_xxxxx
 
 # Sync all environments
-python sync_github_env_api.py --environment all
+python configure/sync_github_env_api.py --environment all
 
 # Sync specific environment
-python sync_github_env_api.py --environment production_primary
+python configure/sync_github_env_api.py --environment production_primary
 ```
 
 **Create token:** https://github.com/settings/tokens/new (needs `repo` and `admin:org` scopes)
@@ -59,13 +59,13 @@ python sync_github_env_api.py --environment production_primary
 
 ```bash
 # Sync all environments
-python sync_github_env.py --environment all
+python configure/sync_github_env.py --environment all
 ```
 
 ### Option 3: PowerShell
 
 ```powershell
-.\sync-github-env.ps1 -Environment all
+.\configure\sync-github-env.ps1 -Environment all
 ```
 
 ## Prerequisites
@@ -85,7 +85,7 @@ python sync_github_env.py --environment all
 ## How It Works
 
 1. Edit local `.env.{environment}` file with your values
-2. Run `python sync_github_env_simple.py --environment all` to push to GitHub Environments
+2. Run `python configure/sync_github_env_simple.py --environment all` to push to GitHub Environments
 3. Workflows use `${{ vars.VARIABLE_NAME }}` to pull from GitHub Environments
 4. Files stay local - never committed to git
 
@@ -93,8 +93,8 @@ python sync_github_env.py --environment all
 
 1. Create `.env.new_environment` file
 2. Add environment to workflow matrix in `.github/workflows/deploy.yml`
-3. Update `sync_github_env.py` choices list
-4. Run: `python sync_github_env.py --environment new_environment`
+3. Update `configure/sync_github_env_simple.py` choices list
+4. Run: `python configure/sync_github_env_simple.py --environment new_environment`
 
 ## Verification
 

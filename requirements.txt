@@ -9,3 +9,4 @@ python-dotenv
 pyyaml
 semantic-kernel>=1.0.0
 mcp>=1.1.0
+PyGithub

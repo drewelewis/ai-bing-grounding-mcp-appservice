@@ -20,6 +20,341 @@ A FastAPI-based REST API and Model Context Protocol (MCP) server for Azure AI Ag
 
 ---
 
+## Running Locally
+
+For local development and testing:
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/your-org/ai-bing-grounding-mcp-appservice.git
+   cd ai-bing-grounding-mcp-appservice
+   ```
+
+2. **Install Python dependencies:**
+   ```bash
+   python -m venv .venv
+   # Windows
+   .venv\Scripts\activate
+   # macOS/Linux
+   source .venv/bin/activate
+   
+   pip install -r requirements.txt
+   ```
+
+3. **Configure Azure credentials:**
+   ```bash
+   # Login to Azure
+   az login
+   
+   # Create .env file with your Azure AI Foundry details:
+   AZURE_AI_PROJECT_ENDPOINT=https://your-ai-foundry.cognitiveservices.azure.com/
+   AZURE_AI_PROJECT_NAME=your-ai-project-name
+   REGION=your-region
+   ```
+
+4. **Run the server:**
+   ```bash
+   python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+   ```
+
+5. **Test the API:**
+   ```bash
+   curl http://localhost:8000/health
+   ```
+
+---
+
+## Deploying to Azure
+
+Deploy this solution to **two Azure regions** for high availability with automatic failover.
+
+### Prerequisites
+
+Install required tools:
+- **Python 3.11+**: https://www.python.org/downloads/
+- **Azure CLI**: https://learn.microsoft.com/cli/azure/install-azure-cli
+- **GitHub CLI**: https://cli.github.com/
+
+### Step 1: Run Setup Script
+
+```bash
+# Authenticate with Azure and GitHub
+az login
+gh auth login
+
+# Run the setup script (interactive)
+python setup/setup_azure_auth.py
+```
+
+**The script will:**
+1. Detect your Azure subscription
+2. Ask for environment name (e.g., `production`, `qa`, `dev`)
+3. Show an interactive region picker for primary region
+4. Show an interactive region picker for secondary region
+5. Create service principal and federated credentials
+6. Set GitHub repository secrets
+7. Output the exact deployment command to run next
+
+**Example output:**
+```
+🚀 NEXT STEPS
+1️⃣  Deploy Infrastructure (wait ~10-15 minutes)
+
+  gh workflow run deploy-infra.yml --field action=provision --field environment=production
+```
+
+### Step 2: Deploy Infrastructure
+
+Run the command from Step 1 output:
+
+```bash
+gh workflow run deploy-infra.yml --field action=provision --field environment=production
+```
+
+**Monitor the deployment:**
+```bash
+gh run list --workflow=deploy-infra.yml
+gh run view  # View the latest run
+```
+
+### Step 3: Get Configuration from Workflow Output
+
+After the workflow completes (~10-15 minutes), **view the workflow summary**:
+
+```bash
+gh run view --web  # Opens in browser
+```
+
+The workflow output will show complete `.env` file contents with **actual resource names**:
+
+```
+Create `.env.production_primary`:
+AZURE_ENV_NAME=production
+WEBAPP_NAME=app-abc123xyz
+AI_PROJECT_ENDPOINT=https://ai-foundry-abc123xyz.cognitiveservices.azure.com/
+AI_PROJECT_NAME=ai-proj-abc123xyz
+REGION=eastus2
+RESOURCE_GROUP=rg-bing-grounding-mcp-production-primary
+
+Create `.env.production_secondary`:
+AZURE_ENV_NAME=production
+WEBAPP_NAME=app-def456uvw
+AI_PROJECT_ENDPOINT=https://ai-foundry-def456uvw.cognitiveservices.azure.com/
+AI_PROJECT_NAME=ai-proj-def456uvw
+REGION=westus2
+RESOURCE_GROUP=rg-bing-grounding-mcp-production-secondary
+```
+
+**Copy these contents** into local files.
+
+### Step 4: Sync Configuration to GitHub
+
+```bash
+python configure/sync_github_env_simple.py --environment production_primary
+python configure/sync_github_env_simple.py --environment production_secondary
+```
+
+### Step 5: Deploy Application
+
+```bash
+gh workflow run deploy.yml --field environment=production
+```
+
+**What gets deployed:**
+- ✅ **Multi-region** (Primary + Secondary regions you selected)
+- ✅ **12 AI agents** (6 per region: 2x gpt-4o, 2x gpt-4.1-mini, 2x gpt-4.1-nano)
+- ✅ **APIM load balancing** with circuit breaker and automatic failover
+- ✅ **Bing grounding** for web search capabilities
+- ✅ **MCP server** for standardized AI tool integration
+
+---
+
+## Prerequisites
+
+Complete these steps once to set up authentication:
+
+### 1. GitHub Authentication
+
+**Option A: Using GitHub CLI (Recommended)**
+
+```bash
+# Install GitHub CLI (if not already installed)
+# Windows: winget install GitHub.cli
+# macOS: brew install gh
+# Linux: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+
+# Authenticate with GitHub
+gh auth login
+```
+
+**Option B: Using Fine-Grained Personal Access Token**
+
+1. Go to: https://github.com/settings/tokens?type=beta
+2. Click "Generate new token"
+3. Configure:
+   - **Token name**: `azure-deployment-automation`
+   - **Repository access**: Select your repository
+   - **Permissions**:
+     - Repository → Administration (Read and write)
+     - Repository → Environments (Read and write)
+     - Repository → Secrets (Read and write)
+4. Click "Generate token" and copy it
+5. Add to `.env` file:
+   ```bash
+   GITHUB_TOKEN=github_pat_xxxxxxxxxxxxx
+   ```
+
+---
+
+### 2. Azure Authentication
+
+Run this script to configure Azure authentication for GitHub Actions:
+
+```bash
+python setup/setup_azure_auth.py
+```
+
+**What it does:**
+1. Creates Azure Service Principal with Contributor role
+2. Creates federated credentials for all 4 environments (production_primary, production_secondary, qa_primary, qa_secondary)
+3. Sets GitHub repository secrets (AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID)
+4. Updates your `.env` file with credentials
+
+**You'll be prompted for:**
+- Azure Subscription ID
+- GitHub Repository (owner/repo format)
+- Service Principal name (optional, defaults to "github-actions-bing-grounding")
+
+---
+
+## Deployment
+
+### 1. Provision Infrastructure
+
+### 1. Provision Infrastructure
+
+```bash
+# Production
+gh workflow run deploy-infra.yml --field action=provision --field environment=production
+
+# QA  
+gh workflow run deploy-infra.yml --field action=provision --field environment=qa
+```
+
+This creates all Azure resources (App Services, AI Foundry, APIM, Bing Grounding, etc.)
+
+**Wait for provisioning to complete** (this takes 10-15 minutes).
+
+### 2. Configure GitHub Environment Variables
+
+After infrastructure is provisioned, create local environment configuration files:
+
+```bash
+# Get resource names from Azure
+az resource list --resource-group rg-bing-grounding-mcp-prod-primary --output table
+
+# Create .env.production_primary with actual values:
+AZURE_ENV_NAME=prod
+WEBAPP_NAME=<your-webapp-name>
+AI_PROJECT_ENDPOINT=<your-ai-foundry-endpoint>
+AI_PROJECT_NAME=<your-ai-project-name>
+REGION=eastus2
+RESOURCE_GROUP=rg-bing-grounding-mcp-prod-primary
+
+# Repeat for other environments (.env.production_secondary, .env.qa_primary, .env.qa_secondary)
+```
+
+Then sync to GitHub:
+
+```bash
+python configure/sync_github_env_simple.py --environment all
+```
+
+**Tip:** You can also get resource names from the Azure Portal or by checking the workflow logs.
+
+### 3. Deploy Application
+
+```bash
+# Production
+gh workflow run deploy.yml --field environment=production
+
+# QA
+gh workflow run deploy.yml --field environment=qa
+```
+
+**That's it!** Your application is now deployed. See [ENV_CONFIG.md](ENV_CONFIG.md) for details on environment configuration.
+
+---
+
+## Adding a New Environment
+
+To add a new environment (e.g., `staging` or `dev`):
+
+### 1. Update the setup script
+
+Edit [setup/setup_azure_auth.py](setup/setup_azure_auth.py) and add your environment to the `environments` list:
+
+```python
+environments = [
+    'production_primary',
+    'production_secondary', 
+    'qa_primary',
+    'qa_secondary',
+    'staging_primary',      # Add new environment
+    'staging_secondary'     # Add new environment
+]
+```
+
+Re-run the script to create federated credentials:
+
+```bash
+python setup/setup_azure_auth.py
+```
+
+### 2. Create environment configuration file
+
+Create `.env.{environment}` files locally:
+
+```bash
+# .env.staging_primary
+AZURE_ENV_NAME=staging
+WEBAPP_NAME=app-staging-xxxxx
+AI_PROJECT_ENDPOINT=https://ai-foundry-staging-xxxxx.cognitiveservices.azure.com/
+AI_PROJECT_NAME=ai-proj-staging-xxxxx
+REGION=eastus2
+RESOURCE_GROUP=rg-bing-grounding-mcp-staging-primary
+```
+
+### 3. Sync to GitHub
+
+```bash
+python configure/sync_github_env_simple.py --environment staging_primary
+python configure/sync_github_env_simple.py --environment staging_secondary
+```
+
+### 4. Update workflows
+
+Add the new environment to [.github/workflows/deploy.yml](.github/workflows/deploy.yml) and [.github/workflows/deploy-infra.yml](.github/workflows/deploy-infra.yml):
+
+```yaml
+environment:
+  description: 'Environment to deploy to'
+  required: true
+  type: choice
+  options:
+    - production
+    - qa
+    - staging    # Add this
+```
+
+Now you can deploy to the new environment:
+
+```bash
+gh workflow run deploy-infra.yml --field action=provision --field environment=staging
+```
+
+---
+
 ## Quick Start: Provision & Deploy to Azure
 
 The fastest way to get started is with Azure Developer CLI:
