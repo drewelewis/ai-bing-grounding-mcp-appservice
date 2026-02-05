@@ -387,9 +387,8 @@ jobs:
         if: github.event.inputs.skip_hooks != 'true'
         run: |
           echo "Running post-provision scripts..."
-          python scripts/postprovision_deploy_models.py || true
           python scripts/postprovision_deploy_bing_connection.py || true
-          # Note: Agent creation moved to app deploy workflow (deploy.yml)
+          # Note: Model deployment and agent creation moved to app deploy workflow (deploy.yml)
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_ENV_NAME: ${{ needs.validate.outputs.environment_name }}
