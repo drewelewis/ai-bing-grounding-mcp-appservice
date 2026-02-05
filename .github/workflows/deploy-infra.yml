@@ -57,6 +57,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  deployments: write  # Required to create/update GitHub environment variables
 
 env:
   PYTHON_VERSION: '3.11'
