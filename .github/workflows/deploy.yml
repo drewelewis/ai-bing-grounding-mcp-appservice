@@ -93,6 +93,9 @@ jobs:
       name: ${{ github.event.inputs.environment || 'dev1' }}
     
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
