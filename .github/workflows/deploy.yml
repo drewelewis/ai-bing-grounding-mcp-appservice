@@ -105,6 +105,58 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Set up Python for scripts
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies for deployment scripts
+        run: |
+          pip install --upgrade pip
+          pip install azure-ai-projects azure-identity pyyaml
+
+      - name: Deploy Models to Primary Region
+        if: vars.AZURE_AI_PROJECT_ENDPOINT_PRIMARY != ''
+        run: |
+          echo "📦 Deploying models to primary region..."
+          python scripts/postprovision_deploy_models.py
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_ENV_NAME: ${{ github.event.inputs.environment || 'dev1' }}
+          AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT_PRIMARY }}
+
+      - name: Create Agents for Primary Region
+        if: vars.AZURE_AI_PROJECT_ENDPOINT_PRIMARY != ''
+        run: |
+          echo "🤖 Creating agents for primary region..."
+          python scripts/postprovision_create_agents.py
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_ENV_NAME: ${{ github.event.inputs.environment || 'dev1' }}
+          AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT_PRIMARY }}
+          BING_GROUNDING_RESOURCE_ID: ${{ vars.BING_GROUNDING_RESOURCE_ID_PRIMARY }}
+
+      - name: Deploy Models to Secondary Region
+        if: vars.AZURE_AI_PROJECT_ENDPOINT_SECONDARY != ''
+        run: |
+          echo "📦 Deploying models to secondary region..."
+          python scripts/postprovision_deploy_models.py
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_ENV_NAME: ${{ github.event.inputs.environment || 'dev1' }}
+          AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT_SECONDARY }}
+
+      - name: Create Agents for Secondary Region
+        if: vars.AZURE_AI_PROJECT_ENDPOINT_SECONDARY != ''
+        run: |
+          echo "🤖 Creating agents for secondary region..."
+          python scripts/postprovision_create_agents.py
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_ENV_NAME: ${{ github.event.inputs.environment || 'dev1' }}
+          AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT_SECONDARY }}
+          BING_GROUNDING_RESOURCE_ID: ${{ vars.BING_GROUNDING_RESOURCE_ID_SECONDARY }}
+
       - name: Deploy to Primary Region
         if: vars.AZURE_WEBAPP_NAME_PRIMARY != ''
         uses: azure/webapps-deploy@v2
