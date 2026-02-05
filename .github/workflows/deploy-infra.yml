@@ -446,39 +446,63 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
           
-          # GitHub Environment Variables - Clear format for copy/paste
+          # GitHub Environment Variables - CLEAN format for easy copy/paste
           echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "## ⚠️ Required GitHub Environment Variables" >> $GITHUB_STEP_SUMMARY
+          echo "## ⚠️ Required: GitHub Environment Configuration" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Copy these values to **GitHub Settings → Environments**:" >> $GITHUB_STEP_SUMMARY
+          echo "**Go to:** [GitHub Settings → Environments → \`${{ needs.validate.outputs.environment_name }}\`](https://github.com/${{ github.repository }}/settings/environments)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
-          echo "### For \`production-primary\` environment:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Variable | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| \`AZURE_WEBAPP_NAME_PRIMARY\` | \`$PRIMARY_WEBAPP\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`AZURE_AI_PROJECT_ENDPOINT_PRIMARY\` | \`$PRIMARY_ENDPOINT\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`BING_GROUNDING_RESOURCE_ID_PRIMARY\` | \`$PRIMARY_BING_ID\` |" >> $GITHUB_STEP_SUMMARY
+          echo "**Create environment \`${{ needs.validate.outputs.environment_name }}\` and add these 6 variables:**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
+          # Primary region - show values in code blocks for easy copying
+          echo "### 🔵 Primary Region Variables" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "Variable: AZURE_WEBAPP_NAME_PRIMARY" >> $GITHUB_STEP_SUMMARY
+          echo "Value:    $PRIMARY_WEBAPP" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "Variable: AZURE_AI_PROJECT_ENDPOINT_PRIMARY" >> $GITHUB_STEP_SUMMARY
+          echo "Value:    $PRIMARY_ENDPOINT" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "Variable: BING_GROUNDING_RESOURCE_ID_PRIMARY" >> $GITHUB_STEP_SUMMARY
+          echo "Value:    $PRIMARY_BING_ID" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Secondary region (if exists)
           if [ -n "$SECONDARY_WEBAPP" ]; then
-            echo "### For \`production-secondary\` environment:" >> $GITHUB_STEP_SUMMARY
+            echo "### 🟢 Secondary Region Variables" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Variable | Value |" >> $GITHUB_STEP_SUMMARY
-            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| \`AZURE_WEBAPP_NAME_SECONDARY\` | \`$SECONDARY_WEBAPP\` |" >> $GITHUB_STEP_SUMMARY
-            echo "| \`AZURE_AI_PROJECT_ENDPOINT_SECONDARY\` | \`$SECONDARY_ENDPOINT\` |" >> $GITHUB_STEP_SUMMARY
-            echo "| \`BING_GROUNDING_RESOURCE_ID_SECONDARY\` | \`$SECONDARY_BING_ID\` |" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "Variable: AZURE_WEBAPP_NAME_SECONDARY" >> $GITHUB_STEP_SUMMARY
+            echo "Value:    $SECONDARY_WEBAPP" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "Variable: AZURE_AI_PROJECT_ENDPOINT_SECONDARY" >> $GITHUB_STEP_SUMMARY
+            echo "Value:    $SECONDARY_ENDPOINT" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "Variable: BING_GROUNDING_RESOURCE_ID_SECONDARY" >> $GITHUB_STEP_SUMMARY
+            echo "Value:    $SECONDARY_BING_ID" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
           
           echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Infrastructure provisioned successfully!**" >> $GITHUB_STEP_SUMMARY
+          echo "## ✅ Next Steps" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
-          echo "1. Copy the values above to GitHub Settings → Environments" >> $GITHUB_STEP_SUMMARY
-          echo "2. Run the **Deploy to Azure App Service** workflow" >> $GITHUB_STEP_SUMMARY
+          echo "1. **Copy the values above** to GitHub environment \`${{ needs.validate.outputs.environment_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "2. **Deploy application:**" >> $GITHUB_STEP_SUMMARY
+          echo '   ```bash' >> $GITHUB_STEP_SUMMARY
+          echo "   gh workflow run deploy.yml --field environment=${{ needs.validate.outputs.environment_name }}" >> $GITHUB_STEP_SUMMARY
+          echo '   ```' >> $GITHUB_STEP_SUMMARY
 
   deploy:
     name: Deploy Application
