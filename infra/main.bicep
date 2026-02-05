@@ -57,10 +57,10 @@ param agentPoolSizeGpt35Turbo int = 0
 
 // Generate resource names
 var abbrs = loadJsonContent('./abbreviations.json')
-// Use deployment timestamp to force new unique names (avoids DNS cache issues with purged resources)
-var deploymentSalt = substring(deployment().name, max(0, length(deployment().name) - 10), 10)
-var resourceToken = toLower(uniqueString(subscription().id, environmentName, location, deploymentSalt))
-var resourceTokenSecondary = !empty(locationSecondary) ? toLower(uniqueString(subscription().id, environmentName, locationSecondary, deploymentSalt)) : ''
+// Use stable resource tokens based on subscription, environment, and location only
+// This ensures consistent naming across deployments (no more duplicates!)
+var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
+var resourceTokenSecondary = !empty(locationSecondary) ? toLower(uniqueString(subscription().id, environmentName, locationSecondary)) : ''
 var tags = { 'azd-env-name': environmentName }
 var deploySecondaryRegion = !empty(locationSecondary)
 
