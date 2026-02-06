@@ -56,23 +56,30 @@ async def periodic_agent_refresh():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan - startup and shutdown"""
-    # Startup: Start background task for agent loading and refresh
     print("🚀 Starting Bing Grounding API...")
     
-    # Start agent loading in background (non-blocking)
-    load_task = asyncio.create_task(async_load_agents())
-    refresh_task = asyncio.create_task(periodic_agent_refresh())
+    # Load agents SYNCHRONOUSLY during startup - fail fast if there's an issue
+    print("📥 Loading agents from Azure AI Foundry...")
+    try:
+        load_agents()
+        print(f"✅ Loaded {len(AGENTS)} agents successfully")
+    except Exception as e:
+        print(f"❌ FATAL: Failed to load agents: {e}")
+        import traceback
+        traceback.print_exc()
+        raise  # Fail startup if agents can't be loaded
     
+    # Start background refresh task
+    refresh_task = asyncio.create_task(periodic_agent_refresh())
     print(f"⏰ Background refresh scheduled every {AGENT_REFRESH_INTERVAL} seconds")
-    print("✅ API ready to accept requests (agents loading in background)")
+    print("✅ API ready - all agents loaded")
     
     yield  # App is running
     
-    # Shutdown: cancel background tasks
-    load_task.cancel()
+    # Shutdown: cancel background task
     refresh_task.cancel()
     try:
-        await load_task
+        await refresh_task
         await refresh_task
     except asyncio.CancelledError:
         print("🛑 Background tasks stopped")
@@ -196,12 +203,18 @@ async def health_check():
         }
     
     # Overall status
-    if active_models == len(models_status):
+    if len(AGENTS) == 0:
+        overall_status = "down"  # No agents loaded = service is down
+        message = "No agents loaded - service unavailable"
+    elif active_models == len(models_status):
         overall_status = "ok"
+        message = "All agents operational"
     elif active_models > 0:
         overall_status = "partial"
+        message = "Some agents inactive"
     else:
         overall_status = "inactive"
+        message = "All agents inactive"
     
     return {
         "status": overall_status,
@@ -210,7 +223,8 @@ async def health_check():
         "agents_loaded": len(AGENTS),
         "active_models": active_models,
         "total_models": len(models_status),
-        "models": models_detail
+        "models": models_detail,
+        "message": message
     }
 
 
