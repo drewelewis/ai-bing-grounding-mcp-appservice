@@ -418,7 +418,7 @@ jobs:
           
           # Get primary region values
           echo "📋 Primary Region: $PRIMARY_RG"
-          PRIMARY_WEBAPP=$(az resource list --resource-group "$PRIMARY_RG" --query "[0].name" -o tsv 2>/dev/null || echo "")
+          PRIMARY_WEBAPP=$(az webapp list --resource-group "$PRIMARY_RG" --query "[0].name" -o tsv 2>/dev/null || echo "")
           PRIMARY_ENDPOINT=$(az cognitiveservices account list --resource-group "$PRIMARY_RG" --query "[?kind=='AIServices'].properties.endpoint | [0]" -o tsv 2>/dev/null || echo "")
           PRIMARY_FOUNDRY=$(az cognitiveservices account list --resource-group "$PRIMARY_RG" --query "[?kind=='AIServices'].name | [0]" -o tsv 2>/dev/null || echo "")
           # Get project name - the resource name is in format 'foundry-name/project-name', we need just the project name
