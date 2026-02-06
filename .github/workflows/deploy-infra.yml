@@ -260,7 +260,7 @@ jobs:
           echo "Creating Bing Grounding resources for each region..."
           
           ENV_NAME="${{ needs.validate.outputs.environment_name }}"
-          PRIMARY_RG="rg-bing-grounding-mcp-${ENV_NAME}"
+          PRIMARY_RG="rg-bing-grounding-mcp-${ENV_NAME}-primary"
           SECONDARY_RG="rg-bing-grounding-mcp-${ENV_NAME}-secondary"
           
           # Create Bing Grounding for primary region
