@@ -207,7 +207,7 @@ jobs:
           echo "Note: azd may skip SKU updates if resources already exist"
           
           ENV_NAME="${{ needs.validate.outputs.environment_name }}"
-          PRIMARY_RG="rg-bing-grounding-mcp-${ENV_NAME}"
+          PRIMARY_RG="rg-bing-grounding-mcp-${ENV_NAME}-primary"
           SECONDARY_RG="rg-bing-grounding-mcp-${ENV_NAME}-secondary"
           
           # Function to update ASP SKU if needed
@@ -315,7 +315,7 @@ jobs:
           echo "Configuring service principal permissions for AI Foundry and Agents API..."
           
           ENV_NAME="${{ needs.validate.outputs.environment_name }}"
-          PRIMARY_RG="rg-bing-grounding-mcp-${ENV_NAME}"
+          PRIMARY_RG="rg-bing-grounding-mcp-${ENV_NAME}-primary"
           SECONDARY_RG="rg-bing-grounding-mcp-${ENV_NAME}-secondary"
           
           # Get the service principal object ID (required for role assignments)
@@ -409,7 +409,7 @@ jobs:
           
           ENV_NAME="${{ needs.validate.outputs.environment_name }}"
           REPO="${{ github.repository }}"
-          PRIMARY_RG="rg-bing-grounding-mcp-${ENV_NAME}"
+          PRIMARY_RG="rg-bing-grounding-mcp-${ENV_NAME}-primary"
           SECONDARY_RG="rg-bing-grounding-mcp-${ENV_NAME}-secondary"
           
           echo "📍 Repository: $REPO"
