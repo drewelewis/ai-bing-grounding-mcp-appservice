@@ -421,7 +421,9 @@ jobs:
           PRIMARY_WEBAPP=$(az resource list --resource-group "$PRIMARY_RG" --query "[0].name" -o tsv 2>/dev/null || echo "")
           PRIMARY_ENDPOINT=$(az cognitiveservices account list --resource-group "$PRIMARY_RG" --query "[?kind=='AIServices'].properties.endpoint | [0]" -o tsv 2>/dev/null || echo "")
           PRIMARY_FOUNDRY=$(az cognitiveservices account list --resource-group "$PRIMARY_RG" --query "[?kind=='AIServices'].name | [0]" -o tsv 2>/dev/null || echo "")
-          PRIMARY_PROJECT=$(az resource list --resource-group "$PRIMARY_RG" --resource-type "Microsoft.CognitiveServices/accounts/projects" --query "[0].name" -o tsv 2>/dev/null || echo "")
+          # Get project name - the resource name is in format 'foundry-name/project-name', we need just the project name
+          PRIMARY_PROJECT_FULL=$(az resource list --resource-group "$PRIMARY_RG" --resource-type "Microsoft.CognitiveServices/accounts/projects" --query "[0].name" -o tsv 2>/dev/null || echo "")
+          PRIMARY_PROJECT="${PRIMARY_PROJECT_FULL##*/}"  # Extract just the project name after the last slash
           PRIMARY_BING_ID=$(az resource list --resource-group "$PRIMARY_RG" --resource-type "Microsoft.Bing/accounts" --query "[0].id" -o tsv 2>/dev/null || echo "")
           
           echo "  Web App: $PRIMARY_WEBAPP"
@@ -455,7 +457,9 @@ jobs:
           if [ -n "$SECONDARY_WEBAPP" ]; then
             SECONDARY_ENDPOINT=$(az cognitiveservices account list --resource-group "$SECONDARY_RG" --query "[?kind=='AIServices'].properties.endpoint | [0]" -o tsv 2>/dev/null || echo "")
             SECONDARY_FOUNDRY=$(az cognitiveservices account list --resource-group "$SECONDARY_RG" --query "[?kind=='AIServices'].name | [0]" -o tsv 2>/dev/null || echo "")
-            SECONDARY_PROJECT=$(az resource list --resource-group "$SECONDARY_RG" --resource-type "Microsoft.CognitiveServices/accounts/projects" --query "[0].name" -o tsv 2>/dev/null || echo "")
+            # Get project name - the resource name is in format 'foundry-name/project-name', we need just the project name
+            SECONDARY_PROJECT_FULL=$(az resource list --resource-group "$SECONDARY_RG" --resource-type "Microsoft.CognitiveServices/accounts/projects" --query "[0].name" -o tsv 2>/dev/null || echo "")
+            SECONDARY_PROJECT="${SECONDARY_PROJECT_FULL##*/}"  # Extract just the project name after the last slash
             SECONDARY_BING_ID=$(az resource list --resource-group "$SECONDARY_RG" --resource-type "Microsoft.Bing/accounts" --query "[0].id" -o tsv 2>/dev/null || echo "")
             
             echo "  Web App: $SECONDARY_WEBAPP"
