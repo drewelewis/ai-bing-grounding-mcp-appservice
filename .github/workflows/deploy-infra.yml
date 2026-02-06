@@ -418,14 +418,16 @@ jobs:
           
           # Get primary region values
           echo "📋 Primary Region: $PRIMARY_RG"
-          PRIMARY_WEBAPP=$(az webapp list --resource-group "$PRIMARY_RG" --query "[0].name" -o tsv 2>/dev/null || echo "")
+          PRIMARY_WEBAPP=$(az resource list --resource-group "$PRIMARY_RG" --query "[0].name" -o tsv 2>/dev/null || echo "")
           PRIMARY_ENDPOINT=$(az cognitiveservices account list --resource-group "$PRIMARY_RG" --query "[?kind=='AIServices'].properties.endpoint | [0]" -o tsv 2>/dev/null || echo "")
           PRIMARY_FOUNDRY=$(az cognitiveservices account list --resource-group "$PRIMARY_RG" --query "[?kind=='AIServices'].name | [0]" -o tsv 2>/dev/null || echo "")
+          PRIMARY_PROJECT=$(az resource list --resource-group "$PRIMARY_RG" --resource-type "Microsoft.CognitiveServices/accounts/projects" --query "[0].name" -o tsv 2>/dev/null || echo "")
           PRIMARY_BING_ID=$(az resource list --resource-group "$PRIMARY_RG" --resource-type "Microsoft.Bing/accounts" --query "[0].id" -o tsv 2>/dev/null || echo "")
           
           echo "  Web App: $PRIMARY_WEBAPP"
           echo "  AI Endpoint: $PRIMARY_ENDPOINT"
           echo "  AI Foundry: $PRIMARY_FOUNDRY"
+          echo "  AI Project: $PRIMARY_PROJECT"
           echo "  Resource Group: $PRIMARY_RG"
           echo "  Bing ID: $PRIMARY_BING_ID"
           echo ""
@@ -438,6 +440,8 @@ jobs:
           echo "  ✅ AZURE_AI_PROJECT_ENDPOINT_PRIMARY"
           gh variable set AZURE_FOUNDRY_NAME_PRIMARY --body "$PRIMARY_FOUNDRY" --env "$ENV_NAME" --repo "$REPO"
           echo "  ✅ AZURE_FOUNDRY_NAME_PRIMARY"
+          gh variable set AZURE_AI_PROJECT_NAME_PRIMARY --body "$PRIMARY_PROJECT" --env "$ENV_NAME" --repo "$REPO"
+          echo "  ✅ AZURE_AI_PROJECT_NAME_PRIMARY"
           gh variable set AZURE_RESOURCE_GROUP_PRIMARY --body "$PRIMARY_RG" --env "$ENV_NAME" --repo "$REPO"
           echo "  ✅ AZURE_RESOURCE_GROUP_PRIMARY"
           gh variable set BING_GROUNDING_RESOURCE_ID_PRIMARY --body "$PRIMARY_BING_ID" --env "$ENV_NAME" --repo "$REPO"
@@ -451,11 +455,13 @@ jobs:
           if [ -n "$SECONDARY_WEBAPP" ]; then
             SECONDARY_ENDPOINT=$(az cognitiveservices account list --resource-group "$SECONDARY_RG" --query "[?kind=='AIServices'].properties.endpoint | [0]" -o tsv 2>/dev/null || echo "")
             SECONDARY_FOUNDRY=$(az cognitiveservices account list --resource-group "$SECONDARY_RG" --query "[?kind=='AIServices'].name | [0]" -o tsv 2>/dev/null || echo "")
+            SECONDARY_PROJECT=$(az resource list --resource-group "$SECONDARY_RG" --resource-type "Microsoft.CognitiveServices/accounts/projects" --query "[0].name" -o tsv 2>/dev/null || echo "")
             SECONDARY_BING_ID=$(az resource list --resource-group "$SECONDARY_RG" --resource-type "Microsoft.Bing/accounts" --query "[0].id" -o tsv 2>/dev/null || echo "")
             
             echo "  Web App: $SECONDARY_WEBAPP"
             echo "  AI Endpoint: $SECONDARY_ENDPOINT"
             echo "  AI Foundry: $SECONDARY_FOUNDRY"
+            echo "  AI Project: $SECONDARY_PROJECT"
             echo "  Resource Group: $SECONDARY_RG"
             echo "  Bing ID: $SECONDARY_BING_ID"
             echo ""
@@ -467,6 +473,8 @@ jobs:
             echo "  ✅ AZURE_AI_PROJECT_ENDPOINT_SECONDARY"
             gh variable set AZURE_FOUNDRY_NAME_SECONDARY --body "$SECONDARY_FOUNDRY" --env "$ENV_NAME" --repo "$REPO"
             echo "  ✅ AZURE_FOUNDRY_NAME_SECONDARY"
+            gh variable set AZURE_AI_PROJECT_NAME_SECONDARY --body "$SECONDARY_PROJECT" --env "$ENV_NAME" --repo "$REPO"
+            echo "  ✅ AZURE_AI_PROJECT_NAME_SECONDARY"
             gh variable set AZURE_RESOURCE_GROUP_SECONDARY --body "$SECONDARY_RG" --env "$ENV_NAME" --repo "$REPO"
             echo "  ✅ AZURE_RESOURCE_GROUP_SECONDARY"
             gh variable set BING_GROUNDING_RESOURCE_ID_SECONDARY --body "$SECONDARY_BING_ID" --env "$ENV_NAME" --repo "$REPO"

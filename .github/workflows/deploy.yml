@@ -139,6 +139,7 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_ENV_NAME: ${{ github.event.inputs.environment || 'dev1' }}
           AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT_PRIMARY }}
+          AZURE_AI_PROJECT_NAME: ${{ vars.AZURE_AI_PROJECT_NAME_PRIMARY }}
           BING_GROUNDING_RESOURCE_ID: ${{ vars.BING_GROUNDING_RESOURCE_ID_PRIMARY }}
 
       - name: Deploy Models to Secondary Region
@@ -162,6 +163,7 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_ENV_NAME: ${{ github.event.inputs.environment || 'dev1' }}
           AZURE_AI_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_PROJECT_ENDPOINT_SECONDARY }}
+          AZURE_AI_PROJECT_NAME: ${{ vars.AZURE_AI_PROJECT_NAME_SECONDARY }}
           BING_GROUNDING_RESOURCE_ID: ${{ vars.BING_GROUNDING_RESOURCE_ID_SECONDARY }}
 
 
