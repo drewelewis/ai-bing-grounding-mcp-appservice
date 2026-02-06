@@ -57,8 +57,8 @@ def discover_agents_from_project(endpoint: str = None) -> Dict[str, List[dict]]:
             endpoint=project_endpoint
         )
         
-        # SDK method is 'list()' not 'list_agents()'
-        all_agents = client.agents.list()
+        # SDK method is 'list_agents()'
+        all_agents = client.agents.list_agents()
         
         # Pattern to match Bing agents: agent_bing__{model}__{index} or agent_bing_{model}_{index}
         # Supports both naming conventions
