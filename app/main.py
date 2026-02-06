@@ -595,3 +595,30 @@ async def bing_grounding_specific_agent(agent_route: str, request: QueryRequest)
                 "region": AZURE_REGION
             }
         }
+
+
+@app.get("/debug/load-agents")
+async def debug_load_agents():
+    """Debug endpoint to test agent loading synchronously and return detailed errors"""
+    import traceback
+    try:
+        from agents.agent_pool import get_all_agent_ids
+        project_endpoint = os.getenv("AZURE_AI_PROJECT_ENDPOINT")
+        
+        if not project_endpoint:
+            return {"error": "AZURE_AI_PROJECT_ENDPOINT not set"}
+        
+        all_agents = get_all_agent_ids()
+        return {
+            "success": True,
+            "project_endpoint": project_endpoint,
+            "agents_found": len(all_agents),
+            "agents": all_agents
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc()
+        }
